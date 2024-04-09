@@ -59,7 +59,7 @@ class Expt:
         if self.hasCheckpoint():
             self.trainer.restore(self.chkpath)
         losses, accs = self.trainer.train(epochs,self.callback)
-        self.trainer..model.writeModel(self.expdir,'model.pt')
+        self.trainer.model.writeModel(self.expdir,'model.pt')
         df = pd.DataFrame({'loss': losses, 'acc': accs})
         df.to_csv(str(self.expdir) + '/train_acc.csv',index=False)
 

@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from torchvision.transforms import v2 as transforms
 import torchvision.io as tu
+import torchvision
 from PIL import Image
 
 RESNET_IMSIZE = 224
@@ -17,10 +18,17 @@ RESNET_IMSIZE = 224
 Base class for image data set 
 '''
 class ImageDataset(Dataset):
-    RESIZE_TRANS = transforms.Compose([
-        transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
-        transforms.ToDtype(torch.float32,scale=True),
-    ])
+    
+    if torchvision.__version__[0:4] == '0.15':
+        RESIZE_TRANS = transforms.Compose([
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.ConvertImageDtype(torch.float32),
+        ])
+    else:
+        RESIZE_TRANS = transforms.Compose([
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.ToDtype(torch.float32,scale=True),
+        ])
 
     def __init__(self, cubdir, pred=None, transform=None, traincode = '1'):
         self.dir = cubdir
@@ -439,10 +447,10 @@ if __name__ == "__main__":
     datadir = Path('/data1/datasets/birds')
     
     nabdir = Path(datadir / 'nabirds')
-    wdir = Path(datadir / 'nabirds_bbs')
+    wdir = Path(datadir / 'nab_wood_sm')
     cubdir = Path(datadir / 'CUB_200_2011')
     pred = lambda x: ('Woodpecker' in x) or ('Sapsucker' in x)
-    pred = None
+#    pred = None
     woodds = TrainImageDataset(nabdir,pred,None,'all')
     woodds.writeDBfiles(str(wdir))
     exit()
