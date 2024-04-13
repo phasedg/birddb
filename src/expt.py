@@ -80,20 +80,19 @@ class Expt:
 
         running_loss = 0.0
         running_corrects = 0
-        with torch.no_grad():
-            # Iterate over data.
-            for inputs, labels in dl:
-                inputs = inputs.to(self.device)
-                labels = labels.to(self.device)
-
+        # Iterate over data.
+        for inputs, labels in dl:
+            inputs = inputs.to(self.device)
+            labels = labels.to(self.device)
+            with torch.no_grad():
                 outputs = self.model(inputs)
                 _, preds = torch.max(outputs, 1)
                 loss = self.criterion(outputs, labels)
 
                 # statistics
-                running_loss += loss.item() * inputs.size(0)
+            running_loss += loss.item() * inputs.size(0)
                 # print(outputs.shape,preds.shape,labels.data.shape)
-                running_corrects += torch.sum(preds == labels)
+            running_corrects += torch.sum(preds == labels)
         epoch_loss = running_loss / len(ds)
         epoch_acc = running_corrects.double() / len(ds)
         print(f'Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
