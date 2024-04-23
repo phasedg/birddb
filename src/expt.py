@@ -166,7 +166,23 @@ class Expt:
                     row = [dbname,x,stats[x]['train'],stats[x]['test']]
                     rows.append(row)
         df = pd.DataFrame(rows,columns=['traindb','testdb','trainacc','testacc'])
-        df.to_csv(expbase + '/stats.csv')
+        df.to_csv(expbase + '/stats.csv',index=False)
+        return df
+
+    def combineStats(self):
+        rows = []
+        expbase = os.path.dirname(self.expdir)  #strip train db level 
+        for fname in glob.glob(expbase + '/*/*.pkl'):
+            dbname = fname.split('/')[-2]
+            print(dbname)
+            with open(fname,'rb') as f:
+                stats = pickle.load(f)
+                print(stats)
+                for x in stats:
+                    row = [dbname,x,stats[x]['train'],stats[x]['test']]
+                    rows.append(row)
+        df = pd.DataFrame(rows,columns=['traindb','testdb','trainacc','testacc'])
+        df.to_csv(expbase + '/stats.csv',index=False)
         return df
 
 
