@@ -10,13 +10,64 @@ import os
 import torch.nn as nn
 from torchvision.io import read_image
 from torchvision.models import resnet50, ResNet50_Weights
+from env import Env
 
 
+class BirdModel(nn.Module):
 
-class RN50_Bird_V1(nn.Module):
-    def __init__(self,name,numCats,l2size=256):
-        super().__init__()
-        self.name = name
+  @classmethod
+  def modelFromName(cls,name,db):
+     if name.startswith("RN50v1"):
+        return RN50_V1(name,db)
+
+  def __init__(self,modname,db):
+    super().__init__()
+    self.modname = modname
+    self.db = db
+    self.numCats = db.numClasses()
+    self.modeldir = Env.TheEnv.modeldir
+    self.fdir = f"{self.modeldir}/{db.sname}"
+    self.fname = f"{self.fdir}/{self.modname}"
+    self.buildModel()
+    self.loaded = False
+    self.loadModelState()
+
+  def buildModel(self):
+     raise NotImplemented()
+
+  ##
+  # These write and load state dict, need to create model first
+  # ported from dlg project
+  def writeModelState(self):
+      if not os.path.exists(self.fdir):
+        os.makedirs(self.fdir)
+      ms = self.to(torch.device('cpu'))
+      fname = f"{self.fname}.pt" 
+      print(f"writing to {fname}.")
+      torch.save(ms.state_dict(), fname)
+
+  def writeModelStateToDat(self):
+      if not os.path.exists(self.fdir):
+        os.makedirs(self.fdir)
+      ms = self.to(torch.device('cpu'))
+      fname = f"{self.fname}.dat" 
+      print(f"writing to {fname}.")
+      with open(fname,"wb") as f:
+        esd.save_state_dict(ms.state_dict(), f)
+
+  def loadModelState(self):
+      fname = f"{self.fname}.pt" # always load pt format
+      if os.path.exists(fname):
+        self.load_state_dict(torch.load(fname))
+        self.loaded = True
+  
+class RN50_V1(BirdModel):
+    def __init__(self,name,db,l2size=256):
+        self.l2size = l2size
+        super().__init__(name,db)
+
+    def buildModel(self):  # need this so supar cann call to init
+        
         self.rn50_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
         for param in self.rn50_model.parameters():
             param.requires_grad = False
@@ -32,11 +83,11 @@ class RN50_Bird_V1(nn.Module):
                   nn.ReLU(),
                   nn.Dropout(0.5),
 
-                  nn.Linear(512,l2size),
+                  nn.Linear(512,self.l2size),
                   nn.ReLU(),
                   nn.Dropout(0.5),
     #              nn.BatchNorm1d(),
-                  nn.Linear(l2size, numCats),
+                  nn.Linear(self.l2size, self.numCats),
                 )
         
     def forward(self,x):

@@ -14,26 +14,37 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pickle
 import glob
-
+from env import Env
+from birddb import BirdDB
+from birddb import ImageDataset
+from models import BirdModel
 '''
   Expt subclasses encapsule a model structure, training regime
   Instances add training dataset, and paths
 '''
 class Expt:
-    def __init__(self,expdir,datadir,dbname,device,trainTrans):
-        self.datadir = datadir
-        self.dbname = dbname
-        self.dbdir = Path(datadir / dbname)
-        self.expdir = expdir
+    
+    @classmethod
+    def ExptFromName(cls,exptname,db):
+      fields = exptname.split('_')   #<modclass>_<expt>_<trainargs>
+      ename = fields[1]
+      if ename == "t1":
+          return Expt_T1(db)
+      raise Exception(f"No expt for {ename}, {exptname}")
+
+    def __init__(self,db,trainTrans=None):
+        self.datadir = Env.TheEnv.datadir
+        self.db = db
+        self.expdir = f"{Env.TheEnv.expdir}/{db.sname}"
         if not os.path.exists(self.expdir):
             os.makedirs(self.expdir)
 
-        self.device = device
+        self.device = Env.TheEnv.device
         self.chkpath = self.expdir + '/check.pt'
         self.model = None
         self.trainTrans = trainTrans
-        self.trainds = birddb.TrainImageDataset(self.dbdir,transform=self.trainTrans)
-        self.trainds.name = f'Train_{dbname}'
+        traindb = db.getTrainDB()
+        self.trainds = ImageDataset(db,transform=trainTrans)
         self.trainer = None
 
     def dirDict(self):
@@ -53,16 +64,22 @@ class Expt:
         print(self.chkpath)
         return os.path.isfile(self.chkpath)
     
-    def trainModel(self,epochs,write=True,dotfreq=10):
-        self.trainer = self.buildTrainer()
+    def trainModel(self,mod,epochs,write=True,dotfreq=10):
+        self.trainer = self.buildTrainer(mod)
         self.trainer.dotfreq=dotfreq
         if self.hasCheckpoint():
             self.trainer.restore(self.chkpath)
-        losses, accs = self.trainer.train(epochs,self.callback)
-        self.trainer.model.writeModel(self.expdir,'model.pt')
-        df = pd.DataFrame({'loss': losses, 'acc': accs})
-        df.to_csv(str(self.expdir) + '/train_acc.csv',index=False)
-
+        stats = self.trainer.train(epochs,self.callback)
+        #self.trainer.model.writeModel(self.expdir,'model.pt')
+        fname = f"{self.expdir}/{mod.modname}"
+        if not os.path.isdir(fname):
+            os.makedirs(fname)
+        fname = f"{fname}/trainStats.csv"
+        with open(fname,"w") as f:
+            f.write(f"Loss,Acc,ETime,FTime,Btime\n")
+            for x in stats:
+                f.write(f"{x[0]:.3f},{x[1]:.3f},{x[2]:.3f},{x[3]:.3f},{x[4]:.3f}\n")
+                
 
 
     def loadModel(self):
@@ -186,64 +203,33 @@ class Expt:
         return df
 
 
-class Expt_RN50_V1_T2(Expt):
-    def __init__(self,expbase,datadir,dbname,device):
+# similar ot trainproc in dlg
+class Expt_T1(Expt):
+    def __init__(self,db):
         trainTrans = transforms.Compose([
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             transforms.AutoAugment(),
             #transforms.RandomHorizontalFlip(),
             #transforms.ColorJitter(brightness=.3),
             # transforms.RandomRotation(20),
             #    transforms.CenterCrop(224),
         ])
-        self.expbase = expbase
-        super().__init__(str(expbase) + '/RN50_T1/T2/'+ dbname,datadir,dbname,device,trainTrans)
+        super().__init__(db,trainTrans)
         self.criterion = nn.CrossEntropyLoss()
 
 
 
-    def buildTrainer(self):
+    def buildTrainer(self,model):
         self.traindl = self.trainds.makeDataloader(batch_size=32,shuffle=True)
-        self.model = models.RN50_Bird_V1('RN50_V1_' + self.trainds.name,self.trainds.numClasses())
-        self.optimizer = optim.SGD([{'params':self.model.bird_model.parameters()},
-                            {'params':self.model.rn50_model.avgpool.parameters()},
-                            {'params':self.model.rn50_model.layer4.parameters()}],
-
+        self.optimizer = optim.SGD([{'params':model.bird_model.parameters()},
+                            {'params':model.rn50_model.avgpool.parameters()},
+                            {'params':model.rn50_model.layer4.parameters()}],
                                    lr=0.01, momentum=0.9)
         # Decay LR by a factor of 0.1 every 7 epochs
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=4, gamma= 0.9)
-        self.trainer = Trainer(self.model, self.device, self.traindl, None, self.criterion, self.optimizer, self.scheduler, writer=None)
+        self.scheduler = None
+        self.trainer = Trainer(model, self.device, self.traindl, None, self.criterion, self.optimizer, self.scheduler, writer=None)
         return self.trainer
 
 
 
-if __name__ == "__main__":
-    datadir = Path('/data1/datasets/birds')
-    dbname = 'CUB_wood_sm'
-    expbase = '/home/dg/proj/birddb/expts'
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    expt = Expt_RN50_V1_T2(expbase,datadir,dbname,device)
-    print(expt.dirDict())
-    expt.trainModel(5)
-
-    df = pd.read_csv(expt.expdir + '/train_acc.csv')
-    print(df)
-    df.plot()
-    exit()
-    dbdir = Path(datadir / dbname)
-
-    model = expt.loadModel()
-    # note - makeDataloader always adds resize transform
-    trainds = birddb.TrainImageDataset(dbdir)
-    testds = birddb.TestImageDataset(dbdir,trainds)
-    
-
-#    expt.visualizeOnDataset(trainds)
-#    expt.visualizeOnDataset(testds)
-
-
-    dbname = 'CUB_wood'
-    dbdir = Path(datadir / dbname)    
-    testds = birddb.TestImageDataset(dbdir,trainds)
-    testds.printStats()
-    expt.testOnDataset(testds)

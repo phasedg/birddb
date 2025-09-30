@@ -11,6 +11,97 @@ from torchvision.transforms import v2 as transforms
 import torchvision.io as tu
 import torchvision
 from PIL import Image
+from collections import namedtuple
+from env import Env
+
+BdImage = namedtuple("BdImage",["Id","TrainTest","ClassId","ImFile","ClassIdx"])
+BdClass = namedtuple("BdClass",["ClassId","ClassName","Index","Parent"])
+
+class BirdDB:
+    
+    @staticmethod
+    def DBFromName(sname):
+        
+        dbname = sname
+        if sname == "cub_os":
+          dbname = "CUB_200_2011"
+        if sname == "nab_os":
+          dbname = "nabirds"
+        if sname == "cub_sm":
+          dbname = "CUB_200_2011_sm"
+        if sname == "cub_bb":
+          dbname = "CUB_200_2011_bbs"
+        if sname == "nab_sm":
+          dbname = "nabirds_sm"
+        if sname == "nab_wood_sm":
+          dbname = "nab_wood_sm"
+        if sname == "nab_bb":
+          dbname = "nabirds_bbs"
+        return BirdDB(sname,dbname)
+
+    def __init__(self, sname, dbname):
+        self.dir = Env.TheEnv.datadir
+        self.dbname = dbname
+        self.sname = sname
+        self.dbdir = f"{self.dir}/{self.dbname}"
+        self.imdir = f"{self.dbdir}/images"
+        self.classes = []
+        self.imdata = []
+        self.loadFromFiles()
+
+    def loadFromFiles(self):
+        if os.path.isdir(self.dbdir): # derived dbs don't have dirs
+            self.loadClasses()
+            self.loadImageData()
+            print(f"{len(self.classes)} Classes, {len(self.imdata)} Images")
+
+    def loadClasses(self):
+        fname = f"{self.dbdir}/classes.txt"
+        with open(fname,'r') as f:
+          for i,l in enumerate(f.readlines()):
+            x = l.split(' ',1) 
+            self.classes.append(BdClass(x[0],x[1].strip(),i,None))
+
+    def numImages(self):
+        return len(self.imdata)
+    
+    def numClasses(self):
+        return len(self.classes)
+    
+    def className(self,idx):
+        return self.classes[idx].ClassName
+
+    def getTrainDB(self):
+        db = BirdDB(self.sname+":tr",self.dbname+":tr")
+        db.classes = self.classes
+        db.imdata = [x for x in self.imdata if x.TrainTest == "1" ]
+        print(f"{len(db.classes)} Classes, {len(db.imdata)} Images")
+        return db
+    
+    def imageFileAndLabel(self,idx):
+        d = self.imdata[idx]
+        return f"{self.imdir}/{d.ImFile}", d.ClassIdx
+        
+    def loadImageData(self):
+        cdict = {c.ClassId:i for i,c in enumerate(self.classes)}
+        fname = f"{self.dbdir}/image_class_labels.txt"
+
+        with open(fname,'r') as f:
+            imageLabels = [l.split(' ',1) for l in f.readlines()]
+            imageLabels = {x[0]:x[1].strip() for x in imageLabels} # read image labels to dict
+        fname = f"{self.dbdir}/train_test_split.txt"
+        with open(fname,'r') as f:
+            trainTest = [l.split(' ',1) for l in f.readlines()]
+            trainTest = {x[0]:x[1].strip() for x in trainTest} # read train/test to dict
+
+        fname = f"{self.dbdir}/images.txt"
+        with open(fname,'r') as f:
+          for l in f.readlines():
+              d = l.split(' ',1)
+              data = BdImage(d[0],trainTest[d[0]],imageLabels[d[0]],d[1].strip(),cdict[imageLabels[d[0]]])  # could compress image name
+              self.imdata.append(data)
+
+
 
 RESNET_IMSIZE = 224
 
@@ -28,52 +119,50 @@ class ImageDataset(Dataset):
         RESIZE_TRANS = transforms.Compose([
             transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
             transforms.ToDtype(torch.float32,scale=True),
+          
         ])
 
-    def __init__(self, cubdir, pred=None, transform=None, traincode = '1'):
-        self.dir = cubdir
-        self.img_dir = cubdir / 'images'
-        self.transform = transform
-        self.traincode = traincode
+    def __init__(self, db,  transform=None):
         
-        self.myClassLabs = self.readClassLabs(cubdir) # [[lab, name]]
-        self.classLabDict = { x[0]:x[1] for x in self.myClassLabs} # text label to name dict
-        self.myClassLabs = [x[0] for x in self.myClassLabs if (pred is None) or pred(x[1])] # filtered list maintaining order
-
-        # now we need to filter image list based on classes
-        self.imageLabDict = {x[0]:x[1] for x in self.readImageLabs(cubdir)} # [[id lab]] convert to dict
-        self.myIDs = set([x[0] for x in self.readTrainTest(cubdir) if (traincode == 'all' or x[1] == traincode) and (self.imageLabDict[x[0]] in self.myClassLabs)]) # filter ids on train/test and classlist; set for quick access 
-        self.usedLabs = set(self.imageLabDict[x] for x in self.myIDs) # not all classes used -- ie NAB superclasses
-        self.myClassLabs = [x for x in self.myClassLabs if x in self.usedLabs] # filtered by those in use -- list maintaining original order        
-        self.myClassNames = [self.classLabDict[x] for x in self.myClassLabs] # corresponding class names
+        self.transform = transform
+        self.db = db
+       
+        
         self.imageDict = {}
-        self.imageLabs = []
-        self.imageFiles = []
+        self.labelDict = {}
+        
         self.name = None
 
     def numClasses(self):
-        return len(self.myClassLabs)
+        return self.db.numClasses()
 
     def __len__(self):
-        return len(self.imageFiles)
+        return self.db.numImages();
 
     def __getitem__(self, idx):
         if idx in self.imageDict:
           image = self.imageDict[idx]
+          label = self.labelDict[idx]
         else:
-          img_path = os.path.join(self.img_dir, self.imageFiles[idx])
-          image = read_image(img_path,ImageReadMode.RGB) #some CBU in BW
+          img_path, label = self.db.imageFileAndLabel(idx)
+          ## this reads into tensor
+          image = torchvision.io.decode_image(img_path,ImageReadMode.RGB) #some CBU in BW
+          image = ImageDataset.RESIZE_TRANS(image)  # resize and scale
+          image = image.to(Env.TheEnv.device)
           self.imageDict[idx] = image
-         # print(f'ImageDict = {len(self.imageDict)}')
-        label = self.imageLabs[idx]
-        if self.transform:
-            image = self.transform(image)
+          self.labelDict[idx] = label
+        # perhaps move to GPU here?
+        # print(f'ImageDict = {len(self.imageDict)}')
+       # image = ImageDataset.RESIZE_TRANS(image)  # resize and scale
+        
+        if False and self.transform:
+          image = self.transform(image)  # possible run transform pipeline here
         if image.shape[0] < 3:
-            print(image.shape,self.myFiles[idx])
-        return image, label
+            print(image.shape,img_path)
+        return image, label  # returns tensor and int
 
-    def getClassName(self,lab):
-        return self.myClassNames[lab]
+    def getClassName(self,idx):
+        return self.db.className(idx)
 
     def writeClassLabs(self,wdir):
         f = open(wdir + '/classes.txt','w')
@@ -260,11 +349,7 @@ class ImageDataset(Dataset):
         return bbs
 
         
-    def makeDataloader(self,batch_size,shuffle=False):
-        if self.transform is None:
-            self.transform = ImageDataset.RESIZE_TRANS
-        else:
-            self.transform = transforms.Compose([self.transform,ImageDataset.RESIZE_TRANS ])           
+    def makeDataloader(self,batch_size,shuffle=False):         
         return DataLoader(self,batch_size,shuffle)
 
         
@@ -274,7 +359,7 @@ class ImageDataset(Dataset):
             fig.suptitle(self.name)
         for i in range(0,w*h):
             sample_idx = random.randint(0,len(self)-1)
-            img, label = self[sample_idx]       
+            img, label = self[sample_idx]   
             #print(img.shape)
             ax = fig.add_subplot(w,h,i+1)
             ax.imshow(img.permute(1,2,0))
@@ -389,6 +474,28 @@ class CrossImageDataset(ImageDataset):
         c = c.replace('-','_').replace(' ','_').replace(',','').lower()
         return c
 
+'''
+Maps the database in cubdir into the common id set
+'''
+class CommonImageDataset(ImageDataset):
+    def __init__(self, cubdir, target_transform=None):
+        super().__init__(cubdir,None,None,'all')  
+        self.common,self.nabclean,self.cubclean = __common_classes__()
+        if 'nab' in str(cubdir): # actually NAB
+            self.cubclean = self.nabclean # we process cubclean list
+           
+        # cleaned class lists
+        self.myClassNames = [x for x in self.common]  # copy
+        self.myClassLabs = [str(i) for i,x in enumerate(self.common)]
+        self.myClassDict = {}
+        for i in range(0,len(self.myClassLabs)):
+            self.myClassDict[self.myClassNames[i]] = self.myClassLabs[i]
+        self.labToCommName = [[x[2],x[0]] for x in self.cubclean if x[0] in self.myClassNames]
+        self.labToCommLab = {x[0]:self.myClassDict[x[1]] for x in self.labToCommName}
+        self.myImageDict = {x:self.labToCommLab[y] for x,y in self.myImageDict }
+
+
+
 
 
 __trainTrans__ = transforms.Compose([
@@ -443,14 +550,56 @@ def __testDataset__(datadir, dbname,test=None):
         WCTrds.showLoaderImages(shuffle=True)
 
 
+def __common_classes__():
+    datadir = Path('/data1/datasets/birds')
+    nabdir = Path(datadir / 'nabirds')
+    cubdir = Path(datadir / 'CUB_200_2011')
+    pred = None
+    nabds = TrainImageDataset(nabdir,pred,None,'all')
+    cubds = TrainImageDataset(cubdir,pred,None,'all')
+    nablabs = nabds.classLabDict
+    cublabs = cubds.classLabDict
+    def clean(c):
+        if '(' in c:
+            c = c[0:c.index('(')]
+            c = c.strip()
+        if '.' in c:
+            c = c.split('.')[1]
+        c = c.replace('-','_').replace(' ','_').replace(',','').lower()
+        return c
+
+    nabclean = [[clean(nablabs[x]), nablabs[x], x] for x in nablabs]
+    cubclean = [[clean(cublabs[x]), cublabs[x], x] for x in cublabs]
+    common = set([x[0] for x in nabclean]).intersection(set([x[0] for x in cubclean]))
+    common = list(common)
+    common.sort(key=lambda x:x.split('_')[-1])
+    print(len(common))
+    return common, nabclean,cubclean
+    
+
 if __name__ == "__main__":
+    #__common_classes__()
+    datadir = Path('/data1/datasets/birds')
+    
+    db = BirdDB.DBFromName("cu_os")
+    print(db.classes[0:5])
+    print(db.imdata[0:5])
+    ds = ImageDataset(db,None)
+    ds.showImages()
+    exit()
+    nabdir = Path(datadir / 'nabirds')
+    cubdir = Path(datadir / 'CUB_200_2011')
+    comds = CommonImageDataset(cubdir)
+    print(comds.imageDict)
+    exit()
+    
     datadir = Path('/data1/datasets/birds')
     
     nabdir = Path(datadir / 'nabirds')
-    wdir = Path(datadir / 'nab_wood_sm')
     cubdir = Path(datadir / 'CUB_200_2011')
+    wdir = Path(datadir / 'nabirds_sm')
     pred = lambda x: ('Woodpecker' in x) or ('Sapsucker' in x)
-#    pred = None
+    pred = None
     woodds = TrainImageDataset(nabdir,pred,None,'all')
     woodds.writeDBfiles(str(wdir))
     exit()

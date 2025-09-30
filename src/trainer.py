@@ -2,6 +2,7 @@ import time
 import os
 import tempfile
 import torch
+from datetime import datetime
 
 
 class Trainer:
@@ -31,6 +32,8 @@ class Trainer:
         # Here, we use enumerate(training_loader) instead of
         # iter(training_loader) so that we can track the batch
         # index and do some intra-epoch reporting
+        fortime = 0
+        backtime = 0
         for i, data in enumerate(self.traindl):
             # Every data instance is an input + label pair
             inputs, labels = data
@@ -41,14 +44,16 @@ class Trainer:
             with torch.set_grad_enabled(True):
                 # Zero your gradients for every batch!
                 self.optimizer.zero_grad()
-                
+                start = datetime.now()
                 # Make predictions for this batch
-                outputs = self.model(inputs)
+                outputs = self.model.forward(inputs)
                 _, preds = torch.max(outputs, 1)
-                
+                fortime += (datetime.now()-start).total_seconds()
                 # Compute the loss and its gradients
                 loss = self.criterion(outputs, labels)
+                start = datetime.now()
                 loss.backward()
+                backtime += (datetime.now()-start).total_seconds()
                 
                 # Adjust learning weights
             self.optimizer.step()
@@ -61,7 +66,7 @@ class Trainer:
         last_acc = running_correct / len(self.traindl.dataset) # loss per batch
                 
 
-        return last_loss, last_acc
+        return last_loss, last_acc, fortime, backtime
 
     def val_one_epoch(self,epoch_index):
         running_loss = 0.
@@ -95,29 +100,34 @@ class Trainer:
         return last_loss, last_acc
 
     def train(self,epochs,callback=None):
+        print(f"training on {self.device}")
 #        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')            
         self.model = self.model.to(self.device)
+        stats = []
         start = self.epoch
         for i in range(start,epochs):
+            start = datetime.now()
             print(f'Epoch {i}: ',end='')
-            loss,acc = self.train_one_epoch(i)
+            # do the work
+            loss,acc,ft,bt = self.train_one_epoch(i)
+
             if self.scheduler is not None:
                self.scheduler.step()
-            self.losses.append(loss)
+            etime = (datetime.now()-start).total_seconds()
+            stats.append([loss,acc,etime,ft,bt])
             self.accs.append(acc)
             self.epoch = i+1  # epoch to restart at
             if callback is not None:
                 callback(i)
             if (self.valdl is not None) and ((i+1)%5) == 0:
-                tloss,tacc = self.val_one_epoch(i)                
+                tloss,tacc,fortime,backtime = self.val_one_epoch(i)                
                 print(f' Train: Loss:{loss:.3f} Acc:{acc:.3f} Test: Loss:{tloss:.3f} Acc:{tacc:.3f}')
             else:
-                print(f' Train: Loss:{loss:.3f} Acc:{acc:.3f}')
+                print(f' Train: Loss:{loss:.3f} Acc:{acc:.3f}, ETime {etime:.3f} FTime {ft:.3f} BTime {bt:.3f}')
             if self.writer is not None:
                 self.writer.add_scalar('Train/Loss:', loss,i)
                 self.writer.add_scalar('Train/Acc:', acc,i)
-        return self.losses,self.accs
-
+        return stats
         
     '''
       Restore state from checkpoint file. Note: checkpoitn stores state not structure so trainer must be rebuilt with __init__ before restoring
