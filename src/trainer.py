@@ -133,7 +133,7 @@ class Trainer:
             if self.scheduler is not None:
                self.scheduler.step()
             etime = (datetime.now()-start).total_seconds()
-            stats.append([loss,acc,etime,gt])
+            
             self.accs.append(acc)
             self.epoch = i+1  # epoch to restart at
             if callback is not None:
