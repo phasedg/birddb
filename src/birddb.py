@@ -13,6 +13,7 @@ import torchvision
 from PIL import Image
 from collections import namedtuple
 from env import Env
+import random
 
 BdImage = namedtuple("BdImage",["Id","TrainTest","ClassId","ImFile","ClassIdx"])
 BdClass = namedtuple("BdClass",["ClassId","ClassName","Index","Parent"])
@@ -65,6 +66,9 @@ class BirdDB:
     def numImages(self):
         return len(self.imdata)
     
+    def __len__(self):
+        return len(self.imdata)
+    
     def numClasses(self):
         return len(self.classes)
     
@@ -72,9 +76,23 @@ class BirdDB:
         return self.classes[idx].ClassName
 
     def getTrainDB(self):
-        db = BirdDB(self.sname+":tr",self.dbname+":tr")
+        db = BirdDB(self.sname+":tr",self.dbname)
         db.classes = self.classes
         db.imdata = [x for x in self.imdata if x.TrainTest == "1" ]
+        print(f"{len(db.classes)} Classes, {len(db.imdata)} Images")
+        return db
+    
+    def getTestDB(self):
+        db = BirdDB(self.sname+":ts",self.dbname)
+        db.classes = self.classes
+        db.imdata = [x for x in self.imdata if x.TrainTest == "0" ]
+        print(f"{len(db.classes)} Classes, {len(db.imdata)} Images")
+        return db
+    
+    def getValDB(self,frac = 0.2):
+        db = BirdDB(self.sname+":ts",self.dbname)
+        db.classes = self.classes
+        db.imdata = [x for x in self.imdata if x.TrainTest == "0" and random.random() < frac ]
         print(f"{len(db.classes)} Classes, {len(db.imdata)} Images")
         return db
     
@@ -106,9 +124,9 @@ class BirdDB:
 RESNET_IMSIZE = 224
 
 '''
-Base class for image data set 
+PLaceholder for older stuff
 '''
-class ImageDataset(Dataset):
+class MiscDB(Dataset):
     
     if torchvision.__version__[0:4] == '0.15':
         RESIZE_TRANS = transforms.Compose([
@@ -349,7 +367,7 @@ class ImageDataset(Dataset):
         return bbs
 
         
-    def makeDataloader(self,batch_size,shuffle=False):         
+    def makeDataloader(self,batch_size,shuffle=True):         
         return DataLoader(self,batch_size,shuffle)
 
         
@@ -387,195 +405,6 @@ class ImageDataset(Dataset):
             
 
 
-'''
- Train Dataset potentially filtered
-'''
-class TrainImageDataset(ImageDataset):
-    def __init__(self,cubdir, pred=None, transform=None,trainset='train'):
-        super().__init__(cubdir,pred,transform,'1' if trainset == 'train' else ('0' if trainset == 'test' else trainset))
-        # dont assume same order -- preserve file list order
-        for x in self.readImageFiles(cubdir): #[[id, file]]):
-            myid = x[0]
-            mylab = self.imageLabDict[myid]
-            if myid in self.myIDs:
-                self.imageFiles.append(x[1]) # imagefile
-                self.imageLabs.append(self.myClassLabs.index(mylab)) # convert to index 
-#        print(f'{len(self.imageFiles)} Images, {len(self.imageLabs)} Labels, {self.imageFiles[0]}')
-
-
-'''
-Test data set. Filtered by pred on className, classLabs and className arrays are from Training Dataset (tds) for consistancy with model
-'''
-class TestImageDataset(ImageDataset):
-    def __init__(self, cubdir, modelds, trainset='test', pred=None, transform=None):
-        super().__init__(cubdir,pred,transform,'1' if trainset == 'train' else '0')
-        # now we map to labels/indexes in modelds, filtering images if needed
-        # dont assume same order -- preserve file list order
-        self.usedLabs = self.usedLabs.intersection(modelds.usedLabs)  # labels must be in model classLabs
-        for x in self.readImageFiles(cubdir): #[[id, file]]):
-            myid = x[0]
-            mylab = self.imageLabDict[myid]
-            if myid in self.myIDs and mylab in self.usedLabs:
-                self.imageFiles.append(x[1]) # imagefile
-                self.imageLabs.append(modelds.myClassLabs.index(mylab)) # convert to index 
-        self.myClassLabs = [x for x in modelds.myClassLabs] # copy
-        self.myClassNames = [x for x in modelds.myClassNames] # copy
-#        print(f'{len(self.imageFiles)} Images, {len(self.imageLabs)} Labels, {self.imageFiles[0]}')
-
-
-
-'''
- Converts a bird dataset for testing on a model trained on <modelds>
-
-  Start with normal filtered dataset, Then convert classids and names to modelds (filtering where necessary)
-  match on cleaned names
-
-'''
-class CrossImageDataset(ImageDataset):
-    def __init__(self, cubdir, modelds, trainset = 'train',  pred=None, transform=None, target_transform=None):
-        super().__init__(cubdir,pred,transform,'1' if trainset == 'train' else '0')  
-        # now match cleaned names
-        self.clNameDict= {}
-        # clean model names
-        for i,x in enumerate(modelds.myClassLabs):
-            self.clNameDict[self.cleanModelName(modelds.myClassNames[i])] = x  # map cleaned names to model class ids
-        self.clLabMap = {}  # NAB class lab to CBU class lab where map allowed
-        for i,x in enumerate(self.myClassNames):
-            cx = self.cleanTestName(x)
-            if cx in self.clNameDict:
-                self.clLabMap[self.myClassLabs[i]]  = self.clNameDict[cx]
-
-        # dont assume same order -- preserve file list order
-        self.imageLabs = []
-        self.imageFiles = []
-        for x in self.readImageFiles(cubdir): #[[id, file]]):
-            myid = x[0]
-            mylab = self.imageLabDict[myid]
-            if myid in self.myIDs and mylab in self.clLabMap:
-                self.imageFiles.append(x[1])
-                mymodlab = self.clLabMap[mylab]
-                self.imageLabs.append(modelds.myClassLabs.index(mymodlab)) # convert to index
-        self.myClassLabs = [x for x in modelds.myClassLabs] # copy
-        self.myClassNames = [x for x in modelds.myClassNames] # copy
-    #    print(f'{len(self.imageFiles)} Images, {len(self.imageLabs)} Labels, {self.imageFiles[0]}')
-
-        # note- strips () subcats in test to map to base in model
-    def cleanTestName(self,c):
-        if '(' in c:
-            c = c[0:c.index('(')]
-            c = c.strip()
-        c = self.cleanModelName(c)
-        return c
-
-        # note- keeps () subcats in NAB
-    def cleanModelName(self,c):
-        if '.' in c:
-            c = c.split('.')[1]
-        c = c.replace('-','_').replace(' ','_').replace(',','').lower()
-        return c
-
-'''
-Maps the database in cubdir into the common id set
-'''
-class CommonImageDataset(ImageDataset):
-    def __init__(self, cubdir, target_transform=None):
-        super().__init__(cubdir,None,None,'all')  
-        self.common,self.nabclean,self.cubclean = __common_classes__()
-        if 'nab' in str(cubdir): # actually NAB
-            self.cubclean = self.nabclean # we process cubclean list
-           
-        # cleaned class lists
-        self.myClassNames = [x for x in self.common]  # copy
-        self.myClassLabs = [str(i) for i,x in enumerate(self.common)]
-        self.myClassDict = {}
-        for i in range(0,len(self.myClassLabs)):
-            self.myClassDict[self.myClassNames[i]] = self.myClassLabs[i]
-        self.labToCommName = [[x[2],x[0]] for x in self.cubclean if x[0] in self.myClassNames]
-        self.labToCommLab = {x[0]:self.myClassDict[x[1]] for x in self.labToCommName}
-        self.myImageDict = {x:self.labToCommLab[y] for x,y in self.myImageDict }
-
-
-
-
-
-__trainTrans__ = transforms.Compose([
-    transforms.RandomHorizontalFlip(),
-    transforms.ColorJitter(brightness=.3),
-    transforms.RandomRotation(20),
-    #    transforms.CenterCrop(RESNET_IMSIZE),
-])
-
-def __testDataset__(datadir, dbname,test=None):
-    cubdir = Path(datadir / dbname)
-    CTrds = TrainImageDataset(cubdir)
-    CTrds.name = f'Train Dataset from {dbname} - no pred'
-    if test is None or test == 0:
-        CTrds.printStats()
-        CTrds.showImages()
-    CTeds = TestImageDataset(cubdir,CTrds,'test')
-    CTeds.name = f'Test Dataset from {dbname} - no pred'
-    if test is None or test == 1:
-        CTeds.printStats()
-        CTeds.showImages()
-    pred = lambda x: ('Woodpecker' in x) or ('Sapsucker' in x)
-    CTeds = TestImageDataset(cubdir,CTrds,pred = pred)
-    CTeds.name = f'Test Dataset from {dbname} - woodpeckers'
-    if test is None or test == 2:
-        CTeds.printStats()
-        CTeds.showImages()
-    WCTrds = TrainImageDataset(cubdir,pred = pred)
-    WCTrds.name = f'Train Dataset from {dbname} - woodpeckers'
-    if test is None or test == 3:
-        WCTrds.printStats()
-        WCTrds.showImages()
-    CTeds = TestImageDataset(cubdir,WCTrds)
-    CTeds.name = f'Test Dataset from {dbname} - woodpeckers from Train'
-    if test is None or test == 4:
-        CTeds.printStats()
-        CTeds.showImages()
-
-    if test is None or test == 5:
-        CTrds.showLoaderImages()
-    if test is None or test == 6:
-        CTrds.showLoaderImages(shuffle=True)
-    if test is None or test == 7:
-        CTeds.showLoaderImages(shuffle=True)
-
-    WCTrds.transform = __trainTrans__
-    WCTrds.name = f'Train Dataset from {dbname} - woodpeckers - trainTrans'
-    if test is None or test == 8:
-        WCTrds.printStats()
-        WCTrds.showImages()
-    if test is None or test == 9:
-        WCTrds.showLoaderImages(shuffle=True)
-
-
-def __common_classes__():
-    datadir = Path('/data1/datasets/birds')
-    nabdir = Path(datadir / 'nabirds')
-    cubdir = Path(datadir / 'CUB_200_2011')
-    pred = None
-    nabds = TrainImageDataset(nabdir,pred,None,'all')
-    cubds = TrainImageDataset(cubdir,pred,None,'all')
-    nablabs = nabds.classLabDict
-    cublabs = cubds.classLabDict
-    def clean(c):
-        if '(' in c:
-            c = c[0:c.index('(')]
-            c = c.strip()
-        if '.' in c:
-            c = c.split('.')[1]
-        c = c.replace('-','_').replace(' ','_').replace(',','').lower()
-        return c
-
-    nabclean = [[clean(nablabs[x]), nablabs[x], x] for x in nablabs]
-    cubclean = [[clean(cublabs[x]), cublabs[x], x] for x in cublabs]
-    common = set([x[0] for x in nabclean]).intersection(set([x[0] for x in cubclean]))
-    common = list(common)
-    common.sort(key=lambda x:x.split('_')[-1])
-    print(len(common))
-    return common, nabclean,cubclean
-    
 
 if __name__ == "__main__":
     #__common_classes__()
@@ -587,45 +416,4 @@ if __name__ == "__main__":
     ds = ImageDataset(db,None)
     ds.showImages()
     exit()
-    nabdir = Path(datadir / 'nabirds')
-    cubdir = Path(datadir / 'CUB_200_2011')
-    comds = CommonImageDataset(cubdir)
-    print(comds.imageDict)
-    exit()
-    
-    datadir = Path('/data1/datasets/birds')
-    
-    nabdir = Path(datadir / 'nabirds')
-    cubdir = Path(datadir / 'CUB_200_2011')
-    wdir = Path(datadir / 'nabirds_sm')
-    pred = lambda x: ('Woodpecker' in x) or ('Sapsucker' in x)
-    pred = None
-    woodds = TrainImageDataset(nabdir,pred,None,'all')
-    woodds.writeDBfiles(str(wdir))
-    exit()
-    __testDataset__(datadir, 'CUB_200_2011_bbs')
-    exit()
-
-    __testDataset__(datadir, 'CUB_200_2011')
-    __testDataset__(datadir, 'nabirds')
-    __testDataset__(datadir, 'nabirds_sm')
-
-    exit()
    
-
-#    cubds.showStats()
-#    testds(cubds)
-    copySmall(cubdir)
-    exit()
-#    testds(nabds)
-
-    wcubds = TestImageDataset(cubdir,cubds,'test',pred)
-    testds(wcubds)
-    cds = CrossImageDataset(nabdir,cubds,'test',pred)
-    testds(cds)
-
- #   testds(wcubds)
-#    wnabds = TrainImageDataset(nabdir,pred,None,'all')
- #   testds(wnabds)
-#    woodds = CrossImageDataset(Path('./wood'),cubds)
-#    testds(woodds)    

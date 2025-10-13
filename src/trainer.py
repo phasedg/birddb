@@ -23,6 +23,7 @@ class Trainer:
 
         #training loop from pytorchs docs
     def train_one_epoch(self,epoch_index):
+     # with torch.autograd.profiler.profile(use_cuda=True) as prof:
         running_loss = 0.
         last_loss = 0.
         running_correct = 0.
@@ -34,49 +35,64 @@ class Trainer:
         # index and do some intra-epoch reporting
         fortime = 0
         backtime = 0
+        opttime  = 0
+        gtime=0
         for i, data in enumerate(self.traindl):
+          
             # Every data instance is an input + label pair
-            inputs, labels = data
-            inputs = inputs.to(self.device)
-            labels = labels.to(self.device)
-            if self.dotfreq == 0 or (i+1)%self.dotfreq == 0:
-                print('.',end='',flush=True)
-            with torch.set_grad_enabled(True):
-                # Zero your gradients for every batch!
-                self.optimizer.zero_grad()
-                start = datetime.now()
-                # Make predictions for this batch
-                outputs = self.model.forward(inputs)
-                _, preds = torch.max(outputs, 1)
-                fortime += (datetime.now()-start).total_seconds()
-                # Compute the loss and its gradients
-                loss = self.criterion(outputs, labels)
-                start = datetime.now()
-                loss.backward()
-                backtime += (datetime.now()-start).total_seconds()
-                
+          inputs, labels = data
+          inputs = inputs.to(self.device)
+          labels = labels.to(self.device)
+          if self.dotfreq == 0 or (i+1)%self.dotfreq == 0:
+              print('.',end='',flush=True)
+          
+          gstart = datetime.now()
+          with torch.set_grad_enabled(True):
+              
+              # Zero your gradients for every batch!
+              start = datetime.now()
+              self.optimizer.zero_grad()
+              
+              # Make predictions for this batch
+              outputs = self.model.forward(inputs)
+              _, preds = torch.max(outputs, 1)
+             # torch.cuda.synchronize()   timing bogus w/o sync
+              fortime += (datetime.now()-start).total_seconds()
+              ###########################################################
+              # Compute the loss and its gradients
+              start = datetime.now()
+              loss = self.criterion(outputs, labels)
+              
+              loss.backward()
+              backtime += (datetime.now()-start).total_seconds()
+              ###########################################################
                 # Adjust learning weights
-            self.optimizer.step()
-                
-                # Gather data and report
-            running_loss += loss.item() * inputs.size(0)
-            running_correct += torch.sum(preds == labels).item()        
-                
+              
+          self.optimizer.step()
+          
+          ostart = datetime.now()
+            # Gather data and report
+          running_loss += loss.item() * inputs.size(0)
+          running_correct += torch.sum(preds == labels).item()
+          gtime += (datetime.now()-gstart).total_seconds()       
+          opttime += (datetime.now()-ostart).total_seconds()
         last_loss = running_loss / len(self.traindl.dataset) # loss per batch
         last_acc = running_correct / len(self.traindl.dataset) # loss per batch
                 
-
-        return last_loss, last_acc, fortime, backtime
+      #print(prof)
+        return last_loss, last_acc, gtime
 
     def val_one_epoch(self,epoch_index):
         running_loss = 0.
         last_loss = 0.
         running_correct = 0.
         last_acc = 0.
+        gtime = 0
         self.model.eval()  # put in training mode
         # Here, we use enumerate(training_loader) instead of
         # iter(training_loader) so that we can track the batch
         # index and do some intra-epoch reporting
+        gstart = datetime.now()
         for i, data in enumerate(self.valdl):
             # Every data instance is an input + label pair
             inputs, labels = data
@@ -92,38 +108,42 @@ class Trainer:
                 loss = self.criterion(outputs, labels)
                 
                 # Gather data and report
-                running_loss += loss.item()
-                running_correct += torch.sum(preds == labels).item()          
+                running_loss += loss.item() * inputs.size(0)
+                running_correct += torch.sum(preds == labels).item()
+                gtime += (datetime.now()-gstart).total_seconds()         
         last_loss = running_loss / len(self.valdl.dataset) # loss per batch
         last_acc = running_correct / len(self.valdl.dataset) # loss per batch
 
-        return last_loss, last_acc
+        return last_loss, last_acc, gtime
 
     def train(self,epochs,callback=None):
         print(f"training on {self.device}")
 #        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')            
         self.model = self.model.to(self.device)
+        tloss = 0
+        tacc = 0
         stats = []
         start = self.epoch
         for i in range(start,epochs):
             start = datetime.now()
             print(f'Epoch {i}: ',end='')
             # do the work
-            loss,acc,ft,bt = self.train_one_epoch(i)
+            loss,acc,gt = self.train_one_epoch(i)
 
             if self.scheduler is not None:
                self.scheduler.step()
             etime = (datetime.now()-start).total_seconds()
-            stats.append([loss,acc,etime,ft,bt])
+            stats.append([loss,acc,etime,gt])
             self.accs.append(acc)
             self.epoch = i+1  # epoch to restart at
             if callback is not None:
                 callback(i)
-            if (self.valdl is not None) and ((i+1)%5) == 0:
-                tloss,tacc,fortime,backtime = self.val_one_epoch(i)                
-                print(f' Train: Loss:{loss:.3f} Acc:{acc:.3f} Test: Loss:{tloss:.3f} Acc:{tacc:.3f}')
+            if (self.valdl is not None):
+                tloss,tacc,gt = self.val_one_epoch(i)                
+                print(f' Train: Loss:{loss:.3f} Acc:{acc:.3f} Val: Loss:{tloss:.3f} Acc:{tacc:.3f}, ETime {etime:.3f}, GTime {gt:.3f}')
             else:
-                print(f' Train: Loss:{loss:.3f} Acc:{acc:.3f}, ETime {etime:.3f} FTime {ft:.3f} BTime {bt:.3f}')
+                print(f' Train: Loss:{loss:.3f} Acc:{acc:.3f}, ETime {etime:.3f} GTime {gt:.3f}')
+            stats.append([loss,acc,tloss,tacc,etime,gt])
             if self.writer is not None:
                 self.writer.add_scalar('Train/Loss:', loss,i)
                 self.writer.add_scalar('Train/Acc:', acc,i)
