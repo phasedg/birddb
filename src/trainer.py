@@ -139,7 +139,7 @@ class Trainer:
             if callback is not None:
                 callback(i)
             if (self.valdl is not None):
-                tloss,tacc,gt = self.val_one_epoch(i)                
+                tloss,tacc,_ = self.val_one_epoch(i)                
                 print(f' Train: Loss:{loss:.3f} Acc:{acc:.3f} Val: Loss:{tloss:.3f} Acc:{tacc:.3f}, ETime {etime:.3f}, GTime {gt:.3f}')
             else:
                 print(f' Train: Loss:{loss:.3f} Acc:{acc:.3f}, ETime {etime:.3f} GTime {gt:.3f}')
