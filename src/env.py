@@ -19,6 +19,10 @@ class Env:
       basedir = "/home/dg/proj/birddb"
       device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
       Env.initEnv(basedir,datadir,device)
+    if "studio" in wd: # lightning.ai
+      basedir = f"{wd}/birddb"
+      datadir = f"{basedir}/data"
+      Env.initEnv(basedir,datadir,device)
 
 
 

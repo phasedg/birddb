@@ -43,7 +43,7 @@ class Expt:
             todev = False  # don't move data to device on load
           if f == 'nv':
             useval = False  # don't move data to device on load
-      args = (epochs,batch_size,todev,useval)
+      args = (epochs,batch_size,todev,useval,exptname)
       if ename == "t1":
           return Expt_T1(db,args)
       if ename == "t2":
@@ -52,17 +52,19 @@ class Expt:
           return Expt_T1i(db,args)
       raise Exception(f"No expt for {ename}, {exptname}")
 
-    def __init__(self,db,args,trainTrans=None):
+    def __init__(self,db,args):
         self.datadir = Env.TheEnv.datadir
         self.db = db
         self.expdir = f"{Env.TheEnv.expdir}/{db.sname}"
         if not os.path.exists(self.expdir):
             os.makedirs(self.expdir)
+        self.rundir = f"{self.expdir}/{args[4]}"
+        self.runStatFile = f"{self.rundir}/trainStats.csv"
 
         self.device = Env.TheEnv.device
-        self.chkpath = self.expdir + '/check.pt'
+        self.chkpath = f"{self.rundir}/check.pt"
         self.model = None
-        self.trainTrans = trainTrans
+        self.trainTrans = None
         self.args = args
         self.epochs = args[0]
         self.batch_size = args[1]
@@ -94,11 +96,9 @@ class Expt:
             self.trainer.restore(self.chkpath)
         stats = self.trainer.train(self.epochs,self.callback)
         #self.trainer.model.writeModel(self.expdir,'model.pt')
-        fname = f"{self.expdir}/{mod.modname}"
-        if not os.path.isdir(fname):
-            os.makedirs(fname)
-        fname = f"{fname}/trainStats.csv"
-        with open(fname,"w") as f:
+        if not os.path.isdir(os.path.dirname(self.runStatFile)):  #should be self.runDir but better to be sure
+            os.makedirs(self.runStatFile)
+        with open(self.runStatFile,"w") as f:
             f.write(f"Loss,Acc,VLoss,Vacc,ETime,GTime\n")
             for x in stats:
                 f.write(f"{x[0]:.3f},{x[1]:.3f},{x[2]:.3f},{x[3]:.3f},{x[4]:.3f},{x[5]:.3f}\n")
@@ -229,18 +229,20 @@ class Expt:
 
 # similar ot trainproc in dlg
 class Expt_T1(Expt):
+    DEF_MEANS = [0.485, 0.456, 0.406]
     def __init__(self,db,args):
-        trainTrans = transforms.Compose([
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        super().__init__(db,args)
+        self.trainTrans = transforms.Compose([
+            transforms.Normalize(mean=Expt_T1.DEF_MEANS, std=[0.229, 0.224, 0.225]),
             transforms.AutoAugment(),
             #transforms.RandomHorizontalFlip(),
             #transforms.ColorJitter(brightness=.3),
             # transforms.RandomRotation(20),
             #    transforms.CenterCrop(224),
         ])
-        super().__init__(db,args,trainTrans)
+        
         self.valTrans = transforms.Compose([
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            transforms.Normalize(mean=Expt_T1.DEF_MEANS, std=[0.229, 0.224, 0.225]),
             #transforms.AutoAugment(),
             #transforms.RandomHorizontalFlip(),
             #transforms.ColorJitter(brightness=.3),
@@ -273,7 +275,50 @@ class Expt_T1(Expt):
         return self.trainer
     
 
+# similar ot trainproc in dlg
+class Expt_T2(Expt_T1):
+    def __init__(self,db,args):
+        super().__init__(db,args)
+        trainTrans = transforms.Compose([
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            transforms.AutoAugment(),
+            #transforms.RandomHorizontalFlip(),
+            #transforms.ColorJitter(brightness=.3),
+            # transforms.RandomRotation(20),
+            #    transforms.CenterCrop(224),
+        ])
+        self.valTrans = transforms.Compose([
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            #transforms.AutoAugment(),
+            #transforms.RandomHorizontalFlip(),
+            #transforms.ColorJitter(brightness=.3),
+            # transforms.RandomRotation(20),
+            #    transforms.CenterCrop(224),
+        ])
 
+        self.criterion = nn.CrossEntropyLoss()
+
+
+
+    def buildTrainer(self,model):
+        traindb = self.db.getTrainDB()
+        useval = self.args[3]
+        valdl = None
+        
+        self.trainds = ImageDataset(traindb,transform=self.trainTrans,todev=self.todev)
+        self.traindl = self.trainds.makeDataloader(batch_size=self.batch_size,shuffle=True)
+        if useval:
+            valdb = self.db.getValDB()
+            valds = ImageDataset(valdb,transform=self.valTrans,todev=self.todev)
+            valdl = valds.makeDataloader(batch_size=self.batch_size,shuffle=False)
+        self.optimizer = optim.SGD([{'params':model.bird_model.parameters()},
+                            {'params':model.rn50_model.avgpool.parameters()},
+                            {'params':model.rn50_model.layer4.parameters()}],
+                                   lr=0.01, momentum=0.9)
+        # Decay LR by a factor of 0.1 every 7 epochs
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=4, gamma= 0.9)
+        self.trainer = Trainer(model, self.device, self.traindl, valdl, self.criterion, self.optimizer, self.scheduler, writer=None)
+        return self.trainer
 
 
 

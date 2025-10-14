@@ -49,6 +49,11 @@ class BirdDB:
         self.classes = []
         self.imdata = []
         self.loadFromFiles()
+        self.means = None
+        if "cub" in self.sname:
+            self.means = [0.485,0.499,0.432]
+        if "nab" in self.sname:
+            self.means = [0.491,0.508,0.464]
 
     def loadFromFiles(self):
         if os.path.isdir(self.dbdir): # derived dbs don't have dirs
@@ -433,7 +438,7 @@ if __name__ == "__main__":
     #__common_classes__()
     Env.setupEnv()
     
-    db = BirdDB.DBFromName("cub_sm")
+    db = BirdDB.DBFromName("nab_sm")
     db = db.getTrainDB()
     print(db.classes[0:5])
     print(db.imdata[0:5])

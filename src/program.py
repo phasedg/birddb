@@ -17,22 +17,20 @@ from expt import Expt
 
 
 if __name__ == "__main__":
-    datadir = '/data1/datasets/birds'
+    
+    Env.setupEnv()
     sname = 'nab_wood_sm'
-  
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    Env.initEnv("/home/dg/proj/birddb",datadir,device)
     ##driver = Driver(expbase,datadir,dbname,device)
     modname = "RN50v1_t2_e4_b32"
     db = BirdDB.DBFromName(sname)
     mod = BirdModel.modelFromName(modname,db)
+    expt = Expt.ExptFromName(modname,db)
     print(mod)
     if not mod.loaded:
-      expt = Expt.ExptFromName(modname,db)
       expt.trainModel(mod)
       mod.writeModelState()
 
-    df = pd.read_csv(f"{Env.TheEnv.expdir}/{db.dbname}/{mod.modname}/trainStats.csv")
+    df = pd.read_csv(expt.runStatFile)
     print(df)
     df.plot()
     exit()
