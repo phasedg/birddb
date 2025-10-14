@@ -83,6 +83,8 @@ class Expt:
 
     def callback(self,epoch):
         if (epoch+1) % 5 == 0:
+            if not os.path.isdir(os.path.dirname(self.chkpath)):  #should be self.runDir but better to be sure
+                os.makedirs(os.path.dirname(self.chkpath))
             self.trainer.checkpoint(self.chkpath)
 
     def hasCheckpoint(self):
@@ -97,7 +99,7 @@ class Expt:
         stats = self.trainer.train(self.epochs,self.callback)
         #self.trainer.model.writeModel(self.expdir,'model.pt')
         if not os.path.isdir(os.path.dirname(self.runStatFile)):  #should be self.runDir but better to be sure
-            os.makedirs(self.runStatFile)
+            os.makedirs(os.path.dirname(self.runStatFile))
         with open(self.runStatFile,"w") as f:
             f.write(f"Loss,Acc,VLoss,Vacc,ETime,GTime\n")
             for x in stats:
