@@ -21,7 +21,7 @@ if __name__ == "__main__":
     Env.setupEnv()
     sname = 'nab_wood_sm'
     ##driver = Driver(expbase,datadir,dbname,device)
-    modname = "RN50v1_t2_e4_b32"
+    modname = "RN50v1_t2_e5_b32"
     db = BirdDB.DBFromName(sname)
     mod = BirdModel.modelFromName(modname,db)
     expt = Expt.ExptFromName(modname,db)
