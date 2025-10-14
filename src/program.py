@@ -23,7 +23,7 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     Env.initEnv("/home/dg/proj/birddb",datadir,device)
     ##driver = Driver(expbase,datadir,dbname,device)
-    modname = "RN50v1_t1_e4_b32"
+    modname = "RN50v1_t2_e4_b32"
     db = BirdDB.DBFromName(sname)
     mod = BirdModel.modelFromName(modname,db)
     print(mod)

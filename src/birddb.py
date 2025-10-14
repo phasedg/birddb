@@ -119,6 +119,29 @@ class BirdDB:
               data = BdImage(d[0],trainTest[d[0]],imageLabels[d[0]],d[1].strip(),cdict[imageLabels[d[0]]])  # could compress image name
               self.imdata.append(data)
 
+    # averages per image, then averages averages (if images are same size should be global average)
+    def pixelStats(self):
+        rms = []
+        gms = []
+        bms = []
+        for idata in self.imdata:
+            pcount = 0
+            rsum = 0
+            gsum = 0
+            bsum = 0
+            fname = f"{self.imdir}/{idata.ImFile}"
+            img = Image.open(fname)
+            for x in range(img.width):
+              for y in range(img.height):
+                pixel = img.getpixel((x, y))
+                rsum +=pixel[0]
+                gsum +=pixel[1]
+                bsum +=pixel[2]
+                pcount += 255  # hack scaler
+            rms.append(rsum/pcount)
+            gms.append(gsum/pcount)
+            bms.append(bsum/pcount)
+        return sum(rms)/len(self.imdata), sum(gms)/len(self.imdata), sum(bms)/len(self.imdata)
 
 
 RESNET_IMSIZE = 224
@@ -408,12 +431,13 @@ class MiscDB(Dataset):
 
 if __name__ == "__main__":
     #__common_classes__()
-    datadir = Path('/data1/datasets/birds')
+    Env.setupEnv()
     
-    db = BirdDB.DBFromName("cu_os")
+    db = BirdDB.DBFromName("cub_sm")
+    db = db.getTrainDB()
     print(db.classes[0:5])
     print(db.imdata[0:5])
-    ds = ImageDataset(db,None)
-    ds.showImages()
+    print(db.pixelStats())
+    
     exit()
    

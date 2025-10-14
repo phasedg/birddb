@@ -1,4 +1,5 @@
-
+import os
+import torch
 ###
 ### This is a  holder for directories and device etc
 ###  Usually a singleton
@@ -9,6 +10,16 @@ class Env:
   @staticmethod
   def initEnv(basedir,datadir,device):
     Env.TheEnv = Env(basedir,datadir,device)
+  
+  @staticmethod
+  def setupEnv():
+    wd = os.getcwd()
+    if "proj/birddb" in wd:
+      datadir = '/data1/datasets/birds'
+      basedir = "/home/dg/proj/birddb"
+      device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+      Env.initEnv(basedir,datadir,device)
+
 
 
   def __init__(self,basedir,datadir,device):
@@ -18,3 +29,4 @@ class Env:
     self.expdir = f"{basedir}/trainrun"  # training data
     self.datadir = datadir  # databases
     self.statdir = f"{basedir}/stats"  # test results
+    self.srcdir = f"{basedir}/src"
