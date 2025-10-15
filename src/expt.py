@@ -19,6 +19,7 @@ from birddb import BirdDB
 from imageds import ImageDataset
 from imageds import IterImageset
 from models import BirdModel
+from testRun import TestRun
 '''
   Expt subclasses encapsule a model structure, training regime
   Instances add training dataset, and paths
@@ -110,12 +111,13 @@ class Expt:
         self.model = models.RN50_Bird_V1.loadModel(self.expdir,'model.pt')
         return self.model
 
-    def testOnDataset(self,ds):
+    def testOnDB(self,db):
         since = time.time()
         criterion = nn.CrossEntropyLoss()
         best_acc = 0.0
+        ds = ImageDataset(db,self.valTrans,True)
         dl = ds.makeDataloader(batch_size=32, shuffle=False)
-        self. model.to(self.device)
+        self.model.to(self.device)
         # Each epoch has a training and validation phase
         self.model.eval()   # Set model to evaluate mode
 
@@ -135,12 +137,50 @@ class Expt:
                 # print(outputs.shape,preds.shape,labels.data.shape)
             running_corrects += torch.sum(preds == labels)
         epoch_loss = running_loss / len(ds)
-        epoch_acc = running_corrects.double() / len(ds)
+        epoch_acc = running_corrects.item() / len(ds)
         print(f'Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
         time_elapsed = time.time() - since
         print(f'Testing complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
         return epoch_loss, epoch_acc
+    
+
+    ## runs model on DB, writes file
+    ##  imageID, <top5 class ids> <tops 5 probs>
+    def runOnDB(self,db):
+        since = time.time()
+        moddb = self.model.db
+        tr = TestRun(self.rundir,self.model.modname,moddb,db.sname)
+        if len(tr) > 0:
+            return tr
+        best_acc = 0.0
+        ds = ImageDataset(db,self.valTrans,True)
+        self.model.to(self.device)
+        # Each epoch has a training and validation phase
+        self.model.eval()   # Set model to evaluate mode
+
+        running_loss = 0.0
+        running_corrects = 0
+        
+        # Iterate over data.
+        for i in range(0,len(ds)):
+            imId = db.imageId(i)
+            inputs, labels = ds[i]
+            inputs = inputs.reshape(1,inputs.shape[0],inputs.shape[1],inputs.shape[2]) # add batch dim
+            inputs = inputs.to(self.device)
+          
+            with torch.no_grad():
+                outputs = self.model(inputs) # tensor 1,classes
+                outputs = nn.functional.softmax(outputs,dim=1)
+                res = []
+                for r in range(0,outputs.shape[1]):
+                  k = (moddb.classId(r),outputs[0][r].item())  # look up result in madel dict 
+                  res.append(k)
+                res = sorted(res,key=lambda x: -x[1]) # sort by output desc
+                res = res[0:5]
+                tr.add(imId,res)
+        tr.write()
+        return tr
 
     def visualizeOnDataset(self,ds, nameMap = None,num_images=6):
         dl = ds.makeDataloader(batch_size=32, shuffle=True)

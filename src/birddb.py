@@ -32,6 +32,8 @@ class BirdDB:
           dbname = "CUB_200_2011_sm"
         if sname == "cub_bb":
           dbname = "CUB_200_2011_bbs"
+        if sname == "cub_wood":
+          dbname = "CUB_wood"
         if sname == "nab_sm":
           dbname = "nabirds_sm"
         if sname == "nab_wood_sm":
@@ -48,6 +50,7 @@ class BirdDB:
         self.imdir = f"{self.dbdir}/images"
         self.classes = []
         self.imdata = []
+        self.imdict = {}
         self.loadFromFiles()
         self.means = None
         if "cub" in self.sname:
@@ -79,6 +82,19 @@ class BirdDB:
     
     def className(self,idx):
         return self.classes[idx].ClassName
+    
+    def classId(self,idx):
+        return self.classes[idx].ClassId
+    
+    def imageId(self,idx):
+        return self.imdata[idx].Id
+    
+    def getClassIdForImId(self,imid):
+        if len(self.imdict) == 0:
+            for im in self.imdata:
+                self.imdict[im.Id] = im
+        return self.imdict[imid].ClassId
+        
 
     def getTrainDB(self):
         db = BirdDB(self.sname+":tr",self.dbname)
@@ -88,7 +104,7 @@ class BirdDB:
         return db
     
     def getTestDB(self):
-        db = BirdDB(self.sname+":ts",self.dbname)
+        db = BirdDB(self.sname+"_tst",self.dbname)
         db.classes = self.classes
         db.imdata = [x for x in self.imdata if x.TrainTest == "0" ]
         print(f"{len(db.classes)} Classes, {len(db.imdata)} Images")
@@ -100,6 +116,8 @@ class BirdDB:
         db.imdata = [x for x in self.imdata if x.TrainTest == "0" and random.random() < frac ]
         print(f"{len(db.classes)} Classes, {len(db.imdata)} Images")
         return db
+    
+        
     
     def imageFileAndLabel(self,idx):
         d = self.imdata[idx]

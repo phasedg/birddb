@@ -41,7 +41,7 @@ class ImageDataset(Dataset):
           
         ])
 
-    def __init__(self, db,  transform=None,todev = False):
+    def __init__(self, db,  transform=None,todev = True):
         
         self.transform = transform
         self.db = db
