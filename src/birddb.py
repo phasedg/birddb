@@ -97,7 +97,7 @@ class BirdDB:
         
 
     def getTrainDB(self):
-        db = BirdDB(self.sname+":tr",self.dbname)
+        db = BirdDB(self.sname+"_trn",self.dbname)
         db.classes = self.classes
         db.imdata = [x for x in self.imdata if x.TrainTest == "1" ]
         print(f"{len(db.classes)} Classes, {len(db.imdata)} Images")

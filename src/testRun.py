@@ -47,10 +47,10 @@ class TestRun:
       for i in range(0,5):
           f.write(f",Class{i},Prob{i}")
       f.write("\n")
-      for v in self.runScores:
-        f.write(v[0])
+      for imid, v in self.runScores.items():
+        f.write(imid)
         for i in range(0,5):
-          f.write(f",{v[1][i].ClassId},{v[1][i].Prob:.3f}")
+          f.write(f",{v[i].ClassId},{v[i].Prob:.3f}")
         f.write("\n")
 
   def top1Acc(self,conf=0):
