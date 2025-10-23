@@ -49,6 +49,8 @@ class Expt:
           return Expt_T1(db,args)
       if ename == "t2":
           return Expt_T2(db,args)
+      if ename == "t3":
+          return Expt_T3(db,args)     
       if ename == "t1i":
           return Expt_T1i(db,args)
       raise Exception(f"No expt for {ename}, {exptname}")
@@ -362,6 +364,32 @@ class Expt_T2(Expt_T1):
         self.trainer = Trainer(model, self.device, self.traindl, valdl, self.criterion, self.optimizer, self.scheduler, writer=None)
         return self.trainer
 
+ #similar ot trainproc in dlg
+class Expt_T3(Expt_T2):
+    def __init__(self,db,args):
+        super().__init__(db,args)
+        trainTrans = transforms.Compose([
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            #transforms.AutoAugment(),
+            transforms.RandomHorizontalFlip(),
+            #transforms.ColorJitter(brightness=.3),
+            #transforms.RandomRotation(20),
+            #    transforms.CenterCrop(224),
+        ])
+        self.valTrans = transforms.Compose([
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            #transforms.AutoAugment(),
+            #transforms.RandomHorizontalFlip(),
+            #transforms.ColorJitter(brightness=.3),
+            # transforms.RandomRotation(20),
+            #    transforms.CenterCrop(224),
+        ])
+
+        self.criterion = nn.CrossEntropyLoss()
+
+
+
+    
 
 
    
