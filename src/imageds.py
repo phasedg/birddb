@@ -53,7 +53,7 @@ class ImageDataset(Dataset):
         
         self.name = None
         for i in range(0,db.numImages()):
-          img_path, label = self.db.imageFileAndLabel(i)
+          img_path, label = self.db.imageFileAndLabel(i) # returns class index as label 
           ## this reads into tensor
           image = torchvision.io.decode_image(img_path,ImageReadMode.RGB) #some CBU in BW
           if image.shape[0] < 3:

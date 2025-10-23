@@ -149,7 +149,7 @@ class Expt:
 
     ## runs model on DB, writes file
     ##  imageID, <top5 class ids> <tops 5 probs>
-    def runOnDB(self,db):
+    def runOnDB(self,db,batchsize=32):
         since = time.time()
         moddb = self.model.db
         tr = TestRun(self.rundir,self.model.modname,moddb,db.sname)
@@ -163,25 +163,32 @@ class Expt:
 
         running_loss = 0.0
         running_corrects = 0
-        
-        # Iterate over data.
+        batch = []
+        ids = []
+        # Iterate over data. batch to improve GPU utilization
         for i in range(0,len(ds)):
             imId = db.imageId(i)
-            inputs, labels = ds[i]
-            inputs = inputs.reshape(1,inputs.shape[0],inputs.shape[1],inputs.shape[2]) # add batch dim
+            input, _ = ds[i]
+            batch.append(input)
+            ids.append(imId)
+            if len(batch) < batchsize and i != len(ds)-1:
+              continue
+            inputs = torch.stack(inputs)
             inputs = inputs.to(self.device)
-          
+            print('.',end='')
             with torch.no_grad():
-                outputs = self.model(inputs) # tensor 1,classes
-                outputs = nn.functional.softmax(outputs,dim=1)
-                res = []
-                for r in range(0,outputs.shape[1]):
-                  k = (moddb.classId(r),outputs[0][r].item())  # look up result in madel dict 
-                  res.append(k)
-                res = sorted(res,key=lambda x: -x[1]) # sort by output desc
-                res = res[0:5]
-                tr.add(imId,res)
+                outputs = self.model(inputs) # tensor (batchsize,numclasses)
+                outputs = nn.functional.softmax(outputs,dim=1) # probs for classes
+                for j in range(0,outputs.shape[0]):
+                  res = []
+                  for r in range(0,outputs.shape[1]):
+                    k = (moddb.classId(r),outputs[j][r].item())  # look up result in madel dict (classId,prob)
+                    res.append(k)
+                  res = sorted(res,key=lambda x: -x[1]) # sort by output desc
+                  res = res[0:5]
+                  tr.add(imId[j],res)
         tr.write()
+        print()
         return tr
 
     def visualizeOnDataset(self,ds, nameMap = None,num_images=6):

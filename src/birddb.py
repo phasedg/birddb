@@ -16,7 +16,7 @@ from env import Env
 import random
 
 BdImage = namedtuple("BdImage",["Id","TrainTest","ClassId","ImFile","ClassIdx"])
-BdClass = namedtuple("BdClass",["ClassId","ClassName","Index","Parent"])
+BdClass = namedtuple("BdClass",["ClassId","ClassName","Index","Parent","CleanName","Tags"])
 
 class BirdDB:
     
@@ -68,8 +68,10 @@ class BirdDB:
         fname = f"{self.dbdir}/classes.txt"
         with open(fname,'r') as f:
           for i,l in enumerate(f.readlines()):
-            x = l.split(' ',1) 
-            self.classes.append(BdClass(x[0],x[1].strip(),i,None))
+            x = l.split(' ',1)
+            cname = x[1].strip()
+            clean , tags = self.cleanName(cname)
+            self.classes.append(BdClass(x[0],x[1].strip(),i,None,clean,tags))
 
     def numImages(self):
         return len(self.imdata)
@@ -82,6 +84,17 @@ class BirdDB:
     
     def className(self,idx):
         return self.classes[idx].ClassName
+    
+    def cleanName(self,n):
+        if '.' in n:
+            n = n[n.index('.')+1:]
+        
+        tags = None
+        if '(' in n:
+            tags = n[n.index('(')+1:n.index(')')]
+            n = n[0:n.index('(')].strip()
+        n = n.replace(' ','_').replace('-','_').lower()     
+        return n, tags
     
     def classId(self,idx):
         return self.classes[idx].ClassId
@@ -458,9 +471,17 @@ if __name__ == "__main__":
     
     db = BirdDB.DBFromName("nab_sm")
     db = db.getTrainDB()
-    print(db.classes[0:5])
-    print(db.imdata[0:5])
-    print(db.pixelStats())
+    print(db.classes[0])
+    print(db.imdata[0])
+    print(db.imdata[1000])
+   # print(db.pixelStats())
+
+    from abaList import ABAList
+    aba = ABAList()
+    for cl in db.classes:
+        match = aba.match(cl.CleanName)
+        if match is None:
+          print(cl,match)
     
     exit()
    
