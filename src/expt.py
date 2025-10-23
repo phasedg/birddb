@@ -51,8 +51,7 @@ class Expt:
           return Expt_T2(db,args)
       if ename == "t3":
           return Expt_T3(db,args)     
-      if ename == "t1i":
-          return Expt_T1i(db,args)
+
       raise Exception(f"No expt for {ename}, {exptname}")
 
     def __init__(self,db,args):
@@ -400,41 +399,5 @@ class Expt_T3(Expt_T2):
 
 
    
-
-
-# Uses Iterative data set, no transforms. mostly for speed tests
-class Expt_T1i(Expt):
-    def __init__(self,db,args):
-        trainTrans = transforms.Compose([
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            transforms.AutoAugment(),
-            #transforms.RandomHorizontalFlip(),
-            #transforms.ColorJitter(brightness=.3),
-            # transforms.RandomRotation(20),
-            #    transforms.CenterCrop(224),
-        ])
-        super().__init__(db,args,trainTrans)
-        self.criterion = nn.CrossEntropyLoss()
-
-
-
-    def buildTrainer(self,model):
-        traindb = self.db.getTrainDB()
-        useval = self.args[3]
-        valds = None
-        if useval:
-            valds = self.db.getValDB()
-        self.trainds = IterImageset(traindb,batchsize=self.batch_size,todev=self.todev)
-        self.traindl = self.trainds  #.makeDataloader()
-        self.optimizer = optim.SGD([{'params':model.bird_model.parameters()},
-                            {'params':model.rn50_model.avgpool.parameters()},
-                            {'params':model.rn50_model.layer4.parameters()}],
-                                   lr=0.01, momentum=0.9)
-        # Decay LR by a factor of 0.1 every 7 epochs
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=4, gamma= 0.9)
-        self.scheduler = None
-        self.trainer = Trainer(model, self.device, self.traindl, valds, self.criterion, self.optimizer, self.scheduler, writer=None)
-        return self.trainer
-
 
 
