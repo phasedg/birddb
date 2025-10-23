@@ -469,7 +469,7 @@ if __name__ == "__main__":
     #__common_classes__()
     Env.setupEnv()
     
-    db = BirdDB.DBFromName("nab_sm")
+    db = BirdDB.DBFromName("cub_sm")
     db = db.getTrainDB()
     print(db.classes[0])
     print(db.imdata[0])

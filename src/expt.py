@@ -102,7 +102,7 @@ class Expt:
         #self.trainer.model.writeModel(self.expdir,'model.pt')
         if not os.path.isdir(os.path.dirname(self.runStatFile)):  #should be self.runDir but better to be sure
             os.makedirs(os.path.dirname(self.runStatFile))
-        with open(self.runStatFile,"a") as f:
+        with open(self.runStatFile,"w") as f:
             f.write(f"Loss,Acc,VLoss,Vacc,ETime,GTime\n")
             for x in stats:
                 f.write(f"{x[0]:.3f},{x[1]:.3f},{x[2]:.3f},{x[3]:.3f},{x[4]:.3f},{x[5]:.3f}\n")
