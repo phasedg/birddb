@@ -50,7 +50,15 @@ class Expt:
       if ename == "t2":
           return Expt_T2(db,args)
       if ename == "t3":
-          return Expt_T3(db,args)     
+          return Expt_T3(db,args) 
+      if ename == "t4":
+          return Expt_T4(db,args) 
+      if ename == "t5":
+          return Expt_T5(db,args)
+      if ename == "t6":
+          return Expt_T6(db,args)
+      if ename == "t7":
+          return Expt_T7(db,args)                     
 
       raise Exception(f"No expt for {ename}, {exptname}")
 
@@ -174,9 +182,11 @@ class Expt:
             ids.append(imId)
             if len(batch) < batchsize and i != len(ds)-1:
               continue
-            inputs = torch.stack(inputs)
+            inputs = torch.stack(batch)
             inputs = inputs.to(self.device)
-            print('.',end='')
+            if (i+1)%(self.batch_size*10) == 0:
+                print('.',end='')
+            
             with torch.no_grad():
                 outputs = self.model(inputs) # tensor (batchsize,numclasses)
                 outputs = nn.functional.softmax(outputs,dim=1) # probs for classes
@@ -187,7 +197,9 @@ class Expt:
                     res.append(k)
                   res = sorted(res,key=lambda x: -x[1]) # sort by output desc
                   res = res[0:5]
-                  tr.add(imId[j],res)
+                  tr.add(ids[j],res)
+            batch = []
+            ids = []
         tr.write()
         print()
         return tr
@@ -329,7 +341,7 @@ class Expt_T1(Expt):
 class Expt_T2(Expt_T1):
     def __init__(self,db,args):
         super().__init__(db,args)
-        trainTrans = transforms.Compose([
+        self.trainTrans = transforms.Compose([
             transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
             transforms.AutoAugment(),
             #transforms.RandomHorizontalFlip(),
@@ -394,10 +406,126 @@ class Expt_T3(Expt_T2):
         self.criterion = nn.CrossEntropyLoss()
 
 
+#No normalization, auto augment
+class Expt_T4(Expt_T2):
+    def __init__(self,db,args):
+        super().__init__(db,args)
+        trainTrans = transforms.Compose([
+            #transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            transforms.AutoAugment(),
+            #transforms.RandomHorizontalFlip(),
+            #transforms.ColorJitter(brightness=.3),
+            #transforms.RandomRotation(20),
+            #    transforms.CenterCrop(224),
+        ])
+        self.valTrans = None
+
+        self.criterion = nn.CrossEntropyLoss()
+
 
     
 
+class Expt_T5(Expt_T1):
 
-   
+    def __init__(self,db,args):
+        RESNET_IMSIZE = 224
+        super().__init__(db,args)
+        self.trainTrans = torch.nn.Sequential(
+            
+            # transforms.AutoAugment(),
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=.3,hue=0.1,contrast=0.2),
+            transforms.RandomRotation(20),
+            transforms.RandomAutocontrast(0.2),
+            
+            
+            transforms.ToDtype(torch.float32,scale=True)
+            #transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            # maybe normalize
+            #    transforms.CenterCrop(224),
+        )
+        self.valTrans = torch.nn.Sequential(
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.ToDtype(torch.float32,scale=True)
+            #transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            )
+
+        self.criterion = nn.CrossEntropyLoss()
+
+    def buildTrainer(self,model):
+        traindb = self.db.getTrainDB()
+        useval = self.args[3]
+        valdl = None
+        
+        self.trainds = ImageDataset(traindb,transform=self.trainTrans,todev=self.todev,rescale=False)
+        self.traindl = self.trainds.makeDataloader(batch_size=self.batch_size,shuffle=True)
+        if useval:
+            valdb = self.db.getValDB()
+            valds = ImageDataset(valdb,transform=self.valTrans,todev=self.todev)
+            valdl = valds.makeDataloader(batch_size=self.batch_size,shuffle=False)
+        self.optimizer = optim.SGD([{'params':model.bird_model.parameters()},
+                            {'params':model.rn50_model.avgpool.parameters()},
+                            {'params':model.rn50_model.layer4.parameters()}],
+                                   lr=0.01, momentum=0.9)
+        # Decay LR by a factor of 0.1 every 7 epochs
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=4, gamma= 0.9)
+        self.trainer = Trainer(model, self.device, self.traindl, valdl, self.criterion, self.optimizer, self.scheduler, writer=None)
+        return self.trainer
 
 
+ # t5 with normalize
+class Expt_T6(Expt_T5):
+
+    
+    def __init__(self,db,args):
+        RESNET_IMSIZE = 224
+        super().__init__(db,args)
+        self.trainTrans = torch.nn.Sequential(
+            
+            # transforms.AutoAugment(),
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=.3,hue=0.1,contrast=0.2),
+            transforms.RandomRotation(20),
+            transforms.RandomAutocontrast(0.2),
+            
+            
+            transforms.ToDtype(torch.float32,scale=True),
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            # maybe normalize
+            #    transforms.CenterCrop(224),
+        )
+        self.valTrans = torch.nn.Sequential(
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.ToDtype(torch.float32,scale=True),
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            )
+
+        self.criterion = nn.CrossEntropyLoss()
+
+    
+class Expt_T7(Expt_T5):
+
+    
+    def __init__(self,db,args):
+        RESNET_IMSIZE = 224
+        super().__init__(db,args)
+        self.trainTrans = torch.nn.Sequential(
+            
+            # 
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.AutoAugment(),
+            
+            transforms.ToDtype(torch.float32,scale=True),
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            # maybe normalize
+            #    transforms.CenterCrop(224),
+        )
+        self.valTrans = torch.nn.Sequential(
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.ToDtype(torch.float32,scale=True),
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            )
+
+        self.criterion = nn.CrossEntropyLoss()
