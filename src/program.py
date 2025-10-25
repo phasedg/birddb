@@ -23,6 +23,7 @@ if __name__ == "__main__":
     moddbsname = 'cub_sm'
     testdbsname = 'cub_sm'
     ##driver = Driver(expbase,datadir,dbname,device)
+    modname = "RN50v1_t8_e40_b32_L4"
     db = BirdDB.DBFromName(moddbsname)
     for i in range(2,8):
       modname = f"RN50v1_t{i}_e60_b32_L4"
@@ -38,7 +39,7 @@ if __name__ == "__main__":
     print(mod)
     if not mod.loaded and modname.endswith("py"):
       expt.trainModel(mod)
-      mod.writeModelState()
+      
       exit()
 
     expt.model = mod

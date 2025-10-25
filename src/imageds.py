@@ -59,7 +59,7 @@ class ImageDataset(Dataset):
           if image.shape[0] < 3:
             print(image.shape,img_path)
           if rescale:
-            image = ImageDataset.RESIZE_TRANS(image)  # resize and scale -- many transforms work on RGB, scale last
+            image = ImageDataset.RESIZE_TRANS(image)  # resize and scale
           label = torch.tensor(label)
           if todev:
               image = image.to(Env.TheEnv.device)
@@ -68,7 +68,7 @@ class ImageDataset(Dataset):
           self.labelTens.append(label)
           if i%100 == 0:
               print('.',end='')
-        print("Loaded")
+        print(f"{len(self.imageTens)} {len(self.labelTens)} Loaded")
 
     def numClasses(self):
         return self.db.numClasses()

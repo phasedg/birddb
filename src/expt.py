@@ -1,3 +1,4 @@
+from ntpath import isfile
 import time
 import os
 import tempfile
@@ -58,7 +59,9 @@ class Expt:
       if ename == "t6":
           return Expt_T6(db,args)
       if ename == "t7":
-          return Expt_T7(db,args)                     
+          return Expt_T7(db,args)
+      if ename == "t8":
+          return Expt_T8(db,args)
 
       raise Exception(f"No expt for {ename}, {exptname}")
 
@@ -107,6 +110,11 @@ class Expt:
         if self.hasCheckpoint():
             self.trainer.restore(self.chkpath)
         stats = self.trainer.train(self.epochs,self.callback)
+        # write model
+        mod.writeModelState()
+        # clean up checkpt file
+        if os.path.isfile(self.chkpath):
+            os.remove(self.chkpath)
         #self.trainer.model.writeModel(self.expdir,'model.pt')
         if not os.path.isdir(os.path.dirname(self.runStatFile)):  #should be self.runDir but better to be sure
             os.makedirs(os.path.dirname(self.runStatFile))
@@ -529,3 +537,33 @@ class Expt_T7(Expt_T5):
             )
 
         self.criterion = nn.CrossEntropyLoss()
+
+class Expt_T8(Expt_T5):
+
+    
+    def __init__(self,db,args):
+        RESNET_IMSIZE = 224
+        super().__init__(db,args)
+        self.trainTrans = torch.nn.Sequential(
+            
+            # transforms.AutoAugment(),
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomChoice([
+            transforms.ColorJitter(brightness=.3,hue=0.1,contrast=0.2),
+            transforms.RandomRotation(20),
+            transforms.RandomAutocontrast(0.2)],[0.6,0.6,0.6]),
+            
+            
+            transforms.ToDtype(torch.float32,scale=True),
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            # maybe normalize
+            #    transforms.CenterCrop(224),
+        )
+        self.valTrans = torch.nn.Sequential(
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.ToDtype(torch.float32,scale=True),
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            )
+
+    
