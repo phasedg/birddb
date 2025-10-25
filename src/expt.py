@@ -36,16 +36,19 @@ class Expt:
       batch_size = 32
       todev = True
       useval = True
+      lr = 0.01
       for f in fields[2:]:
           if f[0] == 'e':
             epochs = int(f[1:])
           if f[0] == 'b':
             batch_size = int(f[1:])
+          if f[0] == 'l':
+            lr = int(f[1:]) * 0.001
           if f == 'dc':
             todev = False  # don't move data to device on load
           if f == 'nv':
-            useval = False  # don't move data to device on load
-      args = (epochs,batch_size,todev,useval,exptname)
+            useval = False  # don't validate in training (faster)
+      args = (epochs,batch_size,todev,useval,exptname,lr)
       if ename == "t1":
           return Expt_T1(db,args)
       if ename == "t2":
@@ -62,6 +65,8 @@ class Expt:
           return Expt_T7(db,args)
       if ename == "t8":
           return Expt_T8(db,args)
+      if ename == "t9":
+          return Expt_T9(db,args)
 
       raise Exception(f"No expt for {ename}, {exptname}")
 
@@ -464,6 +469,7 @@ class Expt_T5(Expt_T1):
     def buildTrainer(self,model):
         traindb = self.db.getTrainDB()
         useval = self.args[3]
+        lr = self.args[5]
         valdl = None
         
         self.trainds = ImageDataset(traindb,transform=self.trainTrans,todev=self.todev,rescale=False)
@@ -565,5 +571,31 @@ class Expt_T8(Expt_T5):
             transforms.ToDtype(torch.float32,scale=True),
             transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
             )
+
+class Expt_T9(Expt_T8):
+
+    def __init__(self,db,args):
+        RESNET_IMSIZE = 224
+        super().__init__(db,args)
+
+    def buildTrainer(self,model):
+        traindb = self.db.getTrainDB()
+        useval = self.args[3]
+        lr = self.args[5]
+        valdl = None
+        
+        self.trainds = ImageDataset(traindb,transform=self.trainTrans,todev=self.todev,rescale=False)
+        self.traindl = self.trainds.makeDataloader(batch_size=self.batch_size,shuffle=True)
+        if useval:
+            valdb = self.db.getValDB()
+            valds = ImageDataset(valdb,transform=self.valTrans,todev=self.todev)
+            valdl = valds.makeDataloader(batch_size=self.batch_size,shuffle=False)
+        self.optimizer = optim.SGD([{'params':model.bird_model.parameters()},
+                            {'params':model.rn50_model.parameters()}],
+                                   lr=lr, momentum=0.9)
+        # Decay LR by a factor of 0.1 every 7 epochs
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=4, gamma= 0.9)
+        self.trainer = Trainer(model, self.device, self.traindl, valdl, self.criterion, self.optimizer, self.scheduler, writer=None)
+        return self.trainer
 
     
