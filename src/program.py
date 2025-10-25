@@ -22,7 +22,7 @@ if __name__ == "__main__":
     Env.setupEnv()
     moddbsname = 'nab_sm'
     ##driver = Driver(expbase,datadir,dbname,device)
-    modname = "RN50v1_t3_e60_b32_L4"
+    modname = "RN50v1_t8_e40_b32_L4"
     db = BirdDB.DBFromName(moddbsname)
     mod = BirdModel.modelFromName(modname,db)
     expt = Expt.ExptFromName(modname,db)
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     print(mod)
     if not mod.loaded and modname.endswith("L4"):
       expt.trainModel(mod)
-      mod.writeModelState()
+      
       exit()
 
     expt.model = mod

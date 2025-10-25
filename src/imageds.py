@@ -41,7 +41,7 @@ class ImageDataset(Dataset):
           
         ])
 
-    def __init__(self, db,  transform=None,todev = True):
+    def __init__(self, db,  transform=None,todev = True,rescale=True):
         
         self.transform = transform
         self.db = db
@@ -58,7 +58,8 @@ class ImageDataset(Dataset):
           image = torchvision.io.decode_image(img_path,ImageReadMode.RGB) #some CBU in BW
           if image.shape[0] < 3:
             print(image.shape,img_path)
-          image = ImageDataset.RESIZE_TRANS(image)  # resize and scale
+          if rescale:
+            image = ImageDataset.RESIZE_TRANS(image)  # resize and scale
           label = torch.tensor(label)
           if todev:
               image = image.to(Env.TheEnv.device)
@@ -67,7 +68,7 @@ class ImageDataset(Dataset):
           self.labelTens.append(label)
           if i%100 == 0:
               print('.',end='')
-        print("Loaded")
+        print(f"{len(self.imageTens)} {len(self.labelTens)} Loaded")
 
     def numClasses(self):
         return self.db.numClasses()
