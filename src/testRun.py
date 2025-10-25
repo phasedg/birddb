@@ -11,7 +11,7 @@ class TestRun:
     self.rundir = rundir
     self.fname = f"{rundir}/{tstname}-imscores.csv"
     self.runScores = {}
-    print(self.fname)
+   # print(self.fname)
     if os.path.exists(self.fname):
       self.load()
 
@@ -35,7 +35,7 @@ class TestRun:
         for i in range(1,len(fields),2):
           scores.append((fields[i],float(fields[i+1])))
         self.add(imid,scores)
-    print(f"{len(self.runScores)} Loaded")
+   # print(f"{len(self.runScores)} Loaded")
 
   def write(self):
     if not os.path.exists(os.path.dirname(self.fname)):
@@ -63,6 +63,17 @@ class TestRun:
       top1 = scores[0].ClassId
       if c == top1:
         corr += 1
+      count += 1
+    return corr/count, count
+  
+  def topNAcc(self,n):
+    corr=0
+    count = 0
+    for imid, scores in self.runScores.items():
+      c = self.moddb.getClassIdForImId(imid)  # not right, need to map mod classes to ground truth test classs
+      for i in range(0,n):
+        if c == scores[i].ClassId:
+          corr += 1
       count += 1
     return corr/count, count
 

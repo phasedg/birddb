@@ -41,7 +41,7 @@ class ImageDataset(Dataset):
           
         ])
 
-    def __init__(self, db,  transform=None,todev = True):
+    def __init__(self, db,  transform=None,todev = True,rescale=True):
         
         self.transform = transform
         self.db = db
@@ -58,7 +58,8 @@ class ImageDataset(Dataset):
           image = torchvision.io.decode_image(img_path,ImageReadMode.RGB) #some CBU in BW
           if image.shape[0] < 3:
             print(image.shape,img_path)
-          image = ImageDataset.RESIZE_TRANS(image)  # resize and scale
+          if rescale:
+            image = ImageDataset.RESIZE_TRANS(image)  # resize and scale -- many transforms work on RGB, scale last
           label = torch.tensor(label)
           if todev:
               image = image.to(Env.TheEnv.device)
