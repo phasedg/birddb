@@ -85,6 +85,22 @@ class BirdDB:
     def className(self,idx):
         return self.classes[idx].ClassName
     
+    def classCounts(self):
+        counts = {}
+        for im in self.imdata:
+            if im.ClassId not in counts:
+                counts[im.ClassId] = 0
+            counts[im.ClassId] += 1
+        return counts
+    
+    def classHist(self):
+        hist = {}
+        for id,count in self.classCounts().items():
+            if count not in hist:
+                hist[count] = 0
+            hist[count] += 1
+        return hist
+    
     def cleanName(self,n):
         if '.' in n:
             n = n[n.index('.')+1:]
@@ -469,13 +485,25 @@ if __name__ == "__main__":
     #__common_classes__()
     Env.setupEnv()
     
-    db = BirdDB.DBFromName("cub_sm")
-    db = db.getTrainDB()
+    db = BirdDB.DBFromName("CUB_200_2011")
+   # db = db.getTrainDB()
     print(db.classes[0])
     print(db.imdata[0])
     print(db.imdata[1000])
    # print(db.pixelStats())
-
+    print(db.classHist())
+    count = 0
+    for k,c in db.classHist().items():
+        count += k*c
+    print(count,len(db.classCounts()))
+    cnts = db.classHist()
+    x = [i for i in cnts]
+    y = [cnts[i] for i in cnts]
+    from matplotlib import pyplot as plt
+    plt.bar(x,y)
+    plt.show()
+        
+    exit()
     from abaList import ABAList
     aba = ABAList()
     for cl in db.classes:
