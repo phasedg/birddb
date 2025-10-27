@@ -67,6 +67,8 @@ class Expt:
           return Expt_T8(db,args)
       if ename == "t9":
           return Expt_T9(db,args)
+      if ename == "t10":
+          return Expt_T10(db,args)
 
       raise Exception(f"No expt for {ename}, {exptname}")
 
@@ -598,4 +600,29 @@ class Expt_T9(Expt_T8):
         self.trainer = Trainer(model, self.device, self.traindl, valdl, self.criterion, self.optimizer, self.scheduler, writer=None)
         return self.trainer
 
+class Expt_T10(Expt_T8):
+
+    def __init__(self,db,args):
+        RESNET_IMSIZE = 224
+        super().__init__(db,args)
+
+    def buildTrainer(self,model):
+        traindb = self.db.getTrainDB()
+        useval = self.args[3]
+        lr = self.args[5]
+        valdl = None
+        
+        self.trainds = ImageDataset(traindb,transform=self.trainTrans,todev=self.todev,rescale=False)
+        self.traindl = self.trainds.makeDataloader(batch_size=self.batch_size,shuffle=True)
+        if useval:
+            valdb = self.db.getValDB()
+            valds = ImageDataset(valdb,transform=self.valTrans,todev=self.todev)
+            valdl = valds.makeDataloader(batch_size=self.batch_size,shuffle=False)
+        self.optimizer = optim.SGD([{'params':model.bird_model.parameters()},
+                            {'params':model.rn50_model.parameters()}],
+                                   lr=lr, momentum=0.9)
+        # Decay LR by a factor of 0.1 every 7 epochs
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=4, gamma= 0.8)
+        self.trainer = Trainer(model, self.device, self.traindl, valdl, self.criterion, self.optimizer, self.scheduler, writer=None)
+        return self.trainer
     

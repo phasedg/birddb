@@ -2,4 +2,7 @@
 data
 notebooks
 models
+trainrunorig
 *.pt
+*.tar
+

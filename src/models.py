@@ -10,6 +10,7 @@ import os
 import torch.nn as nn
 from torchvision.io import read_image
 from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import resnet101, ResNet101_Weights
 from torchvision.models import resnext50_32x4d,ResNeXt50_32X4D_Weights
 from env import Env
 
@@ -26,6 +27,8 @@ class BirdModel(nn.Module):
         return RX50_V2(name,db)
      if name.startswith("RN50v2"):
         return RN50_V2(name,db)
+     if name.startswith("RN101v2"):
+        return RN101_V2(name,db)  
 
 
   def __init__(self,modname,db):
@@ -189,6 +192,23 @@ class RN50_V2(RX50_V2):
     def buildModel(self):  # need this so supar cann call to init
         
         self.rn50_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+       
+        num_ftrs = self.rn50_model.fc.in_features
+        self.rn50_model.fc = nn.Identity()
+        # Parameters of newly constructed modules have requires_grad=True by default
+        self.bird_model = nn.Sequential(
+                  nn.Linear(num_ftrs,self.numCats) # simple, just one layer (inspired by https://github.com/ecm200/caltech_birds)
+                 
+                )
+
+class RN101_V2(RX50_V2):
+    def __init__(self,name,db,l2size=256):
+        self.l2size = l2size
+        super().__init__(name,db)
+
+    def buildModel(self):  # need this so supar cann call to init
+        
+        self.rn50_model = resnet101(weights=ResNet101_Weights.IMAGENET1K_V2)
        
         num_ftrs = self.rn50_model.fc.in_features
         self.rn50_model.fc = nn.Identity()
