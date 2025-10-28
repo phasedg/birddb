@@ -12,6 +12,7 @@ from torchvision.io import read_image
 from torchvision.models import resnet50, ResNet50_Weights
 from torchvision.models import resnet101, ResNet101_Weights
 from torchvision.models import resnext50_32x4d,ResNeXt50_32X4D_Weights
+from torchvision.models import resnext101_64x4d, ResNeXt101_64X4D_Weights
 from env import Env
 
 
@@ -45,6 +46,9 @@ class BirdModel(nn.Module):
 
   def buildModel(self):
      raise NotImplemented()
+  
+  def getParamList(self):
+      return None
 
   ##
   # These write and load state dict, need to create model first
@@ -71,6 +75,16 @@ class BirdModel(nn.Module):
       if os.path.exists(fname):
         self.load_state_dict(torch.load(fname))
         self.loaded = True
+
+  def writeModel(self,modeldir,modelname):
+        ms = self.to(torch.device('cpu'))
+        ms = torch.jit.script(ms)
+        ms.save(modeldir + '/' + modelname)
+
+  @staticmethod
+  def loadModel(modeldir,modelname):
+      model = torch.jit.load(modeldir + '/' + modelname)
+      return model
   
 class RN50_V1(BirdModel):
     def __init__(self,name,db,l2size=256):
@@ -106,50 +120,8 @@ class RN50_V1(BirdModel):
         x = self.bird_model(x)
         return x
 
-    def writeModel(self,modeldir,modelname):
-        ms = self.to(torch.device('cpu'))
-        ms = torch.jit.script(ms)
-        ms.save(modeldir + '/' + modelname)
-
-    @staticmethod
-    def loadModel(modeldir,modelname):
-        model = torch.jit.load(modeldir + '/' + modelname)
-        return model
-
-## resNext -- only train last layer
-class RX50_V1(BirdModel):
-    def __init__(self,name,db,l2size=256):
-        self.l2size = l2size
-        super().__init__(name,db)
-
-    def buildModel(self):  # need this so supar cann call to init
-        
-        self.rn50_model = resnext50_32x4d(weights=ResNeXt50_32X4D_Weights.IMAGENET1K_V2)
-        for param in self.rn50_model.parameters():
-            param.requires_grad = False
-        num_ftrs = self.rn50_model.fc.in_features
-        self.rn50_model.fc = nn.Identity()
-        # Parameters of newly constructed modules have requires_grad=True by default
-        self.bird_model = nn.Sequential(
-                  nn.Linear(num_ftrs,self.numCats) # simple, just one layer (inspired by https://github.com/ecm200/caltech_birds)
-                 
-                )
-        
-    def forward(self,x):
-        x = self.rn50_model(x)
-        x = self.bird_model(x)
-        return x
-
-    def writeModel(self,modeldir,modelname):
-        ms = self.to(torch.device('cpu'))
-        ms = torch.jit.script(ms)
-        ms.save(modeldir + '/' + modelname)
-
-    @staticmethod
-    def loadModel(modeldir,modelname):
-        model = torch.jit.load(modeldir + '/' + modelname)
-        return model
-
+    
+## resNext -- train all layers
 # don't freeze trained layers
 class RX50_V2(BirdModel):
     def __init__(self,name,db,l2size=256):
@@ -173,18 +145,30 @@ class RX50_V2(BirdModel):
         x = self.bird_model(x)
         return x
 
-    def writeModel(self,modeldir,modelname):
-        ms = self.to(torch.device('cpu'))
-        ms = torch.jit.script(ms)
-        ms.save(modeldir + '/' + modelname)
+class RX101_V2(BirdModel):
+    def __init__(self,name,db,l2size=256):
+        self.l2size = l2size
+        super().__init__(name,db)
 
-    @staticmethod
-    def loadModel(modeldir,modelname):
-        model = torch.jit.load(modeldir + '/' + modelname)
-        return model
+    def buildModel(self):  # need this so supar cann call to init
+        
+        self.rn50_model = resnext101_64x4d(weights=ResNeXt50_32X4D_Weights.IMAGENET1K_V2)
+       
+        num_ftrs = self.rn50_model.fc.in_features
+        self.rn50_model.fc = nn.Identity()
+        # Parameters of newly constructed modules have requires_grad=True by default
+        self.bird_model = nn.Sequential(
+                  nn.Linear(num_ftrs,self.numCats) # simple, 
+                 
+                )
+        
+    def forward(self,x):
+        x = self.rn50_model(x)
+        x = self.bird_model(x)
+        return x   
     
 # don't freeze trained layers
-class RN50_V2(RX50_V2):
+class RN50_V2(BirdModel):
     def __init__(self,name,db,l2size=256):
         self.l2size = l2size
         super().__init__(name,db)
@@ -200,8 +184,13 @@ class RN50_V2(RX50_V2):
                   nn.Linear(num_ftrs,self.numCats) # simple, just one layer (inspired by https://github.com/ecm200/caltech_birds)
                  
                 )
+        
+    def forward(self,x):
+        x = self.rn50_model(x)
+        x = self.bird_model(x)
+        return x
 
-class RN101_V2(RX50_V2):
+class RN101_V2(BirdModel):
     def __init__(self,name,db,l2size=256):
         self.l2size = l2size
         super().__init__(name,db)
@@ -209,7 +198,6 @@ class RN101_V2(RX50_V2):
     def buildModel(self):  # need this so supar cann call to init
         
         self.rn50_model = resnet101(weights=ResNet101_Weights.IMAGENET1K_V2)
-       
         num_ftrs = self.rn50_model.fc.in_features
         self.rn50_model.fc = nn.Identity()
         # Parameters of newly constructed modules have requires_grad=True by default
@@ -217,3 +205,8 @@ class RN101_V2(RX50_V2):
                   nn.Linear(num_ftrs,self.numCats) # simple, just one layer (inspired by https://github.com/ecm200/caltech_birds)
                  
                 )
+        
+    def forward(self,x):
+        x = self.rn50_model(x)
+        x = self.bird_model(x)
+        return x
