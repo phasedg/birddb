@@ -37,7 +37,7 @@ class Expt2:
       epochs = 20
       batch_size = 32
       lr = 0.01
-      decay = (4,8)
+      decay = (4,0.8)
       for f in fields[2:]:
           if f[0] == 'e':
             epochs = int(f[1:])
@@ -46,7 +46,7 @@ class Expt2:
           if f[0] == 'l':
             lr = int(f[1:]) * 0.001 # l05 => 0.005
           if f[0] == 'd':
-            decay = (int(f[1],0.1 * int(f[2])))  # steps, factor (8 => 0.8)
+            decay = (int(f[1]),0.1 * int(f[2]))  # steps, factor (8 => 0.8)
           if f == 'nv':
             useval = False  # don't validate in training (faster)
       nargs = ExptArgs(exptname,epochs,batch_size,lr,decay)
@@ -215,6 +215,7 @@ class Expt2_U1(Expt2):
             transforms.ToDtype(torch.float32,scale=True),
             transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
             )
+        self.criterion = nn.CrossEntropyLoss()
         
 
     def buildTrainer(self,model):
@@ -237,6 +238,7 @@ class Expt2_U1(Expt2):
         self.optimizer = optim.SGD(params,
                                    lr=lr, momentum=0.9)
         # Decay LR by a factor of 0.1 every 7 epochs
+        print(f"Sched: step {decay[0]}, gamma {decay[1]}")
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=decay[0], gamma= decay[1])
         self.trainer = Trainer(model, self.device, self.traindl, valdl, self.criterion, self.optimizer, self.scheduler, writer=None)
         return self.trainer

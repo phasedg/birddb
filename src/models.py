@@ -22,8 +22,6 @@ class BirdModel(nn.Module):
   def modelFromName(cls,name,db):
      if name.startswith("RN50v1"):
         return RN50_V1(name,db)
-     if name.startswith("RX50v1"):
-        return RX50_V1(name,db)
      if name.startswith("RX50v2"):
         return RX50_V2(name,db)
      if name.startswith("RN50v2"):
