@@ -52,6 +52,8 @@ class Expt2:
       nargs = ExptArgs(exptname,epochs,batch_size,lr,decay)
       if ename == "u1":
           return Expt2_U1(db,nargs)
+      if ename == "u2":
+          return Expt2_U2(db,nargs)
       
 
       raise Exception(f"No expt for {ename}, {exptname}")
@@ -244,3 +246,57 @@ class Expt2_U1(Expt2):
         return self.trainer
    
 
+#
+# uses AutoTranform
+class Expt2_U2(Expt2_U1):
+
+    
+    def __init__(self,db,args):
+        RESNET_IMSIZE = 224
+        DEF_MEANS = [0.485, 0.456, 0.406]
+        super().__init__(db,args)
+        self.trainTrans = torch.nn.Sequential(
+            
+            # 
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+
+            transforms.AutoAugment(),
+
+            transforms.ToDtype(torch.float32,scale=True),
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            # maybe normalize
+            #    transforms.CenterCrop(224),
+        )
+        self.valTrans = torch.nn.Sequential(
+            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
+            transforms.ToDtype(torch.float32,scale=True),
+            transforms.Normalize(mean=db.means, std=[0.229, 0.224, 0.225]),
+            )
+        self.criterion = nn.CrossEntropyLoss()
+        
+
+    def buildTrainer(self,model):
+        traindb = self.db.getTrainDB()
+        lr = self.nargs.LR
+        decay = self.nargs.Decay
+        valdl = None
+        
+        self.trainds = ImageDataset(traindb,transform=self.trainTrans,todev=self.todev,rescale=False)
+        self.traindl = self.trainds.makeDataloader(batch_size=self.batch_size,shuffle=True)
+        if self.useval:
+            valdb = self.db.getValDB()
+            valds = ImageDataset(valdb,transform=self.valTrans,todev=self.todev)
+            valdl = valds.makeDataloader(batch_size=self.batch_size,shuffle=False)
+        params = model.getParamList()
+        if params is None:
+            params = [{'params':model.bird_model.parameters()},
+                      {'params':model.rn50_model.parameters()}]
+            
+        self.optimizer = optim.SGD(params,
+                                   lr=lr, momentum=0.9)
+        # Decay LR by a factor of 0.1 every 7 epochs
+        print(f"Sched: step {decay[0]}, gamma {decay[1]}")
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=decay[0], gamma= decay[1])
+        self.trainer = Trainer(model, self.device, self.traindl, valdl, self.criterion, self.optimizer, self.scheduler, writer=None)
+        return self.trainer
+   
