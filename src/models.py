@@ -27,7 +27,9 @@ class BirdModel(nn.Module):
      if name.startswith("RN50v2"):
         return RN50_V2(name,db)
      if name.startswith("RN101v2"):
-        return RN101_V2(name,db)  
+        return RN101_V2(name,db)
+     if name.startswith("RX101v2"):
+        return RX101_V2(name,db)  
 
 
   def __init__(self,modname,db):
@@ -150,7 +152,7 @@ class RX101_V2(BirdModel):
 
     def buildModel(self):  # need this so supar cann call to init
         
-        self.rn50_model = resnext101_64x4d(weights=ResNeXt50_32X4D_Weights.IMAGENET1K_V2)
+        self.rn50_model = resnext101_64x4d(weights=ResNeXt101_64X4D_Weights.DEFAULT)
        
         num_ftrs = self.rn50_model.fc.in_features
         self.rn50_model.fc = nn.Identity()
