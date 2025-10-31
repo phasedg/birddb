@@ -26,6 +26,8 @@ class BirdModel(nn.Module):
         return RX50_V2(name,db)
      if name.startswith("RN50v2"):
         return RN50_V2(name,db)
+     if name.startswith("RN50v3"):
+        return RN50_V3(name,db)
      if name.startswith("RN101v2"):
         return RN101_V2(name,db)
      if name.startswith("RX101v2"):
@@ -183,6 +185,32 @@ class RN50_V2(BirdModel):
         self.bird_model = nn.Sequential(
                   nn.Linear(num_ftrs,self.numCats) # simple, just one layer (inspired by https://github.com/ecm200/caltech_birds)
                  
+                )
+        
+    def forward(self,x):
+        x = self.rn50_model(x)
+        x = self.bird_model(x)
+        return x
+
+class RN50_V3(BirdModel):
+    def __init__(self,name,db,l2size=256):
+        self.l2size = l2size
+        super().__init__(name,db)
+
+    def buildModel(self):  # need this so supar cann call to init
+        
+        self.rn50_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+       
+        num_ftrs = self.rn50_model.fc.in_features
+        self.rn50_model.fc = nn.Identity()
+        # Parameters of newly constructed modules have requires_grad=True by default
+        self.bird_model = nn.Sequential(
+                  nn.Linear(num_ftrs,512),
+                  nn.ReLU(),
+                  nn.Dropout(0.5),
+
+    #              nn.BatchNorm1d(),
+                  nn.Linear(512, self.numCats),
                 )
         
     def forward(self,x):
