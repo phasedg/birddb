@@ -76,6 +76,7 @@ class Expt2:
         self.batch_size = nargs.BatchSize
         self.todev = True
         self.useval = True
+        self.exptname = nargs.ExptName
         
         self.trainer = None
 
@@ -110,13 +111,15 @@ class Expt2:
                 f.write(f"{x[0]:.3f},{x[1]:.3f},{x[2]:.3f},{x[3]:.3f},{x[4]:.3f},{x[5]:.3f}\n")
                 
     
+    def getTrainRun(self,tstdb):
+        return TestRun(self.rundir,self.exptname,self.db,tstdb.sname)
 
     ## runs model on DB, writes file
     ##  imageID, <top5 class ids> <tops 5 probs>
     def runOnDB(self,db,batchsize=32):
         since = time.time()
-        moddb = self.model.db
-        tr = TestRun(self.rundir,self.model.modname,moddb,db.sname)
+        moddb = self.db
+        tr = TestRun(self.rundir,self.exptname,moddb,db.sname)
         if len(tr) > 0:
             return tr
         best_acc = 0.0

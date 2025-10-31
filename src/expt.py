@@ -78,7 +78,7 @@ class Expt:
         self.expdir = f"{Env.TheEnv.expdir}/{db.sname}"
         if not os.path.exists(self.expdir):
             os.makedirs(self.expdir)
-        self.rundir = f"{self.expdir}/{args[4]}"
+        self.rundir = f"{self.expdir}/{args[4]}/expt1"
         self.runStatFile = f"{self.rundir}/trainStats.csv"
 
         self.device = Env.TheEnv.device

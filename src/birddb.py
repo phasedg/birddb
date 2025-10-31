@@ -123,6 +123,12 @@ class BirdDB:
             for im in self.imdata:
                 self.imdict[im.Id] = im
         return self.imdict[imid].ClassId
+    
+    def classNameForClassId(self,cid):
+        for cl in self.classes:
+            if cl.ClassId == cid:
+                return cl.ClassName
+        return None
         
 
     def getTrainDB(self):
@@ -151,6 +157,13 @@ class BirdDB:
     def imageFileAndLabel(self,idx):
         d = self.imdata[idx]
         return f"{self.imdir}/{d.ImFile}", d.ClassIdx
+    
+    def imageFileFromImid(self,imid):
+        if len(self.imdict) == 0:
+            for im in self.imdata:
+                self.imdict[im.Id] = im
+        return f"{self.imdir}/{self.imdict[imid].ImFile}"
+        
         
     def loadImageData(self):
         cdict = {c.ClassId:i for i,c in enumerate(self.classes)}
@@ -194,7 +207,30 @@ class BirdDB:
             gms.append(gsum/pcount)
             bms.append(bsum/pcount)
         return sum(rms)/len(self.imdata), sum(gms)/len(self.imdata), sum(bms)/len(self.imdata)
-
+    
+    def sizeStats(self):
+        bms = []
+        for idata in self.imdata:
+            pcount = 0
+            rsum = 0
+            gsum = 0
+            bsum = 0
+            fname = f"{self.imdir}/{idata.ImFile}"
+            img = Image.open(fname)
+            bms.append((img.width,img.height))
+        avew = sum([b[0] for b in bms])/len(bms)
+        aveh = sum([b[1] for b in bms])/len(bms)
+        return avew,aveh,bms
+    
+    def showImages(self,cid):
+        imfiles = [self.imageFileFromImid(im.Id)  for im in self.imdata if im.ClassId == cid]
+        fig, axes = plt.subplots(nrows=6, ncols=5,figsize=(15,18))
+        imfiles = imfiles[0:30]
+        for i, imfile in enumerate(imfiles):
+            img = Image.open(imfile)
+            axes[i//5,i%5].imshow(img)
+        fig.suptitle(f'{self.classNameForClassId(cid)}')
+        plt.show()
 
 RESNET_IMSIZE = 224
 
@@ -484,8 +520,11 @@ class MiscDB(Dataset):
 if __name__ == "__main__":
     #__common_classes__()
     Env.setupEnv()
-    
-    db = BirdDB.DBFromName("CUB_200_2011")
+    tag = '1'
+    db = BirdDB.DBFromName("cub_sm")
+    db.getTrainDB().showImages(tag)
+    db.getTestDB().showImages(tag)
+    exit()
    # db = db.getTrainDB()
     print(db.classes[0])
     print(db.imdata[0])
