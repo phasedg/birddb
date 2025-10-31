@@ -21,27 +21,17 @@ if __name__ == "__main__":
     
     Env.setupEnv()
     moddbsname = 'cub_sm'
-    testdbsname = 'cub_sm'
+    testdbsname = 'cub_bs'
     ##driver = Driver(expbase,datadir,dbname,device)
-<<<<<<< HEAD
     modname = "RN50v2_u1_e20_b32_l05_L4"
-=======
-    modname = "RX50v2_u1_e20_b32_l05_L4"
->>>>>>> refs/remotes/origin/master
     db = BirdDB.DBFromName(moddbsname)
     
    # mod = BirdModel.modelFromName(modname,db)
     expt = Expt2.ExptFromName(modname,db)
 
-<<<<<<< HEAD
    # print(mod)
    # if not mod.loaded and modname.endswith("py"):
    #   expt.trainModel(mod)
-=======
-    print(mod)
-    if not mod.loaded and modname.endswith("L4"):
-      expt.trainModel(mod)
->>>>>>> refs/remotes/origin/master
       
    #   exit()
 
@@ -72,7 +62,6 @@ if __name__ == "__main__":
       print(tr.top1Acc())
       print(tr.top1Acc(0.6))
       print(tr.top1Acc(0.9))
-<<<<<<< HEAD
       print(tr.topNAcc(2))
       print(tr.topNAcc(3))
       print(tr.topNAcc(4))
@@ -81,12 +70,6 @@ if __name__ == "__main__":
      # print(tr.classAcc()[1])
       for i in ['161']:
        tr.visualizeErrors(i)
-=======
-     # print(tr.classAcc()[0])
-     # print(tr.classAcc()[1])
-     # for i in ['10','11','12']:
-     #   tr.visualizeErrors(i)
->>>>>>> refs/remotes/origin/master
         
     
 

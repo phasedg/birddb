@@ -30,7 +30,7 @@ class BirdDB:
           dbname = "nabirds"
         if sname == "cub_sm":
           dbname = "CUB_200_2011_sm"
-        if sname == "cub_bb":
+        if sname == "cub_bs":
           dbname = "CUB_200_2011_bbs"
         if sname == "cub_wood":
           dbname = "CUB_wood"
