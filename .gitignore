@@ -5,4 +5,6 @@ models
 trainrunorig
 *.pt
 *.tar
+.ipynb_checkpoints
+
 
