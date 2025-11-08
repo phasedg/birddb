@@ -14,6 +14,7 @@ from PIL import Image
 from collections import namedtuple
 from env import Env
 import random
+from abaList import ABAList
 
 BdImage = namedtuple("BdImage",["Id","TrainTest","ClassId","ImFile","ClassIdx"])
 BdClass = namedtuple("BdClass",["ClassId","ClassName","Index","Parent","CleanName","Tags"])
@@ -72,6 +73,132 @@ class BirdDB:
             cname = x[1].strip()
             clean , tags = self.cleanName(cname)
             self.classes.append(BdClass(x[0],x[1].strip(),i,None,clean,tags))
+
+    def loadABAData(self):
+        fname = f"{self.dbdir}/ABA_syn.txt"
+        syns = {}
+        if os.path.exists(fname):
+          with open(fname,'r') as f:
+            for line in f.readlines():
+              if line[0] == '#':
+                continue
+              fields = line.split(',')
+              cn = fields[0].strip()
+              syn = [s.strip() for s in fields[1:]]
+              syns[cn] = syn
+        print(f'{len(syns)} Syns loaded')
+        print(syns)
+        aba = ABAList()
+        abadict = {}
+        for cl in self.classes:
+          match = aba.match(cl.CleanName)
+          if match is None and cl.CleanName in syns:
+              match = aba.match(syns[cl.CleanName][0]) # for now pick first -- ok for family mapping
+          if match is not None:
+              abadict[cl.ClassId] = match
+          else:
+              print(f'no match for {cl.CleanName}')
+        return abadict
+    
+    def famClassDict(self):  # maps famname to index, also classid to fam index/id
+        dict = self.loadABAData()
+        fs = set()
+        for cl in self.classes:
+          if cl.ClassId in dict:
+            fs.add(dict[cl.ClassId].TaxonFamily)
+        fl = list(fs)
+        fl = sorted(fl)
+        fd = {n:i for i,n in enumerate(fl)}
+        cd = {}
+        for cl in self.classes:
+          if cl.ClassId in dict:
+            tf = dict[cl.ClassId].TaxonFamily
+            cd[cl.ClassId] = fd[tf]
+
+        return fd,cd
+
+    def loadBBData(self):
+        bbdict = {}
+        fname = f"{self.dbdir}/bounding_boxes.txt"
+        with open(fname,'r') as f:
+          for i,l in enumerate(f.readlines()):
+            fields = l.split(' ')
+            bbdict[fields[0]] = (float(fields[1]),float(fields[2]),float(fields[3]),float(fields[4]))
+        return bbdict
+         
+  
+    # we write all yolo label files and use .txt file for train/val/test
+    def writeYoloLabelFiles(self,cdict):
+        bbdict = self.loadBBData()
+        labdir = self.imdir.replace('images','labels') # must be only one instance
+        if not os.path.isdir(labdir):
+            os.mkdir(labdir)
+        # write image list
+        for id in self.imdata:
+          if id.ClassId not in cdict:
+              continue
+          cidx = cdict[id.ClassId]
+          fname = f'{labdir}/{id.ImFile.replace('jpg','txt')}'
+          if not os.path.isdir(os.path.dirname(fname)):
+            os.mkdir(os.path.dirname(fname))
+          
+          bb = bbdict[id.Id]
+          with open(fname,'w') as f:
+              f.write(f'{cidx} {bb[0]} {bb[1]} {bb[2]} {bb[3]}\n')
+
+    def writeYoloImageFiles(self,cdict):
+        train = []
+        val = []
+        test = []
+        for id in self.imdata:
+          if id.ClassId not in cdict:
+              continue
+          fname = f'{self.imdir}/{id.ImFile}'
+          if id.TrainTest == '1':
+              train.append(fname)
+          if id.TrainTest == '0':
+            test.append(fname)
+            if random.random() < 0.1:
+                val.append(fname)
+        fname = f'{self.dbdir}/yoloTrain.txt'
+        with open(fname,'w') as f:
+          for l in train:
+            f.write(l)
+            f.write('\n')
+        fname = f'{self.dbdir}/yoloTest.txt'
+        with open(fname,'w') as f:
+          for l in test:
+            f.write(l)
+            f.write('\n')
+        fname = f'{self.dbdir}/yoloVal.txt'
+        with open(fname,'w') as f:
+          for l in val:
+            f.write(l)
+            f.write('\n')
+
+    def writeYoloYamlFile(self,ndict):
+        fname = f'{self.dbdir}/famYolo.yaml'
+        with open(fname,'w') as f:
+           f.write(f'path: {self.dbdir}\n')
+           f.write(f'train: yoloTrain.txt\n')
+           f.write(f'val: yoloVal.txt\n')
+           f.write(f'test: yoloTest.txt\n')
+           f.write(f'names:\n')
+           for c in ndict:
+              f.write(f'  {ndict[c]}: {c}\n')
+        
+
+        
+    
+            
+            
+        
+        
+
+    
+
+        
+           
 
     def numImages(self):
         return len(self.imdata)
@@ -520,6 +647,25 @@ class MiscDB(Dataset):
 if __name__ == "__main__":
     #__common_classes__()
     Env.setupEnv()
+    from abaList import ABAList
+    db = BirdDB.DBFromName("cub_os")
+    cdict = db.famClassDict()[1]
+    db = BirdDB.DBFromName("cub_os")
+    print(cdict)
+    #db.writeYoloLabelFiles(cdict)
+    #db.writeYoloImageFiles(cdict)
+    cdict = db.famClassDict()[0]
+    db.writeYoloYamlFile(cdict)
+    exit()
+
+    aba = db.loadABAData()
+    print(aba[db.classes[0].ClassId])
+    print(db.famClassDict()[0])
+    print(db.famClassDict()[1])
+    print(db.imdata[0])
+    exit()
+    exit()
+
     tag = '1'
     db = BirdDB.DBFromName("cub_sm")
     db.getTrainDB().showImages(tag)
@@ -543,12 +689,5 @@ if __name__ == "__main__":
     plt.show()
         
     exit()
-    from abaList import ABAList
-    aba = ABAList()
-    for cl in db.classes:
-        match = aba.match(cl.CleanName)
-        if match is None:
-          print(cl,match)
-    
-    exit()
+   
    
