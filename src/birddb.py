@@ -10,11 +10,11 @@ import matplotlib.pyplot as plt
 from torchvision.transforms import v2 as transforms
 import torchvision.io as tu
 import torchvision
-from PIL import Image
+from PIL import Image, ImageDraw
 from collections import namedtuple
 from env import Env
 import random
-from abaList import ABAList
+
 
 BdImage = namedtuple("BdImage",["Id","TrainTest","ClassId","ImFile","ClassIdx"])
 BdClass = namedtuple("BdClass",["ClassId","ClassName","Index","Parent","CleanName","Tags"])
@@ -74,7 +74,7 @@ class BirdDB:
             clean , tags = self.cleanName(cname)
             self.classes.append(BdClass(x[0],x[1].strip(),i,None,clean,tags))
 
-    def loadABAData(self):
+    def loadABAData(self,aba):
         fname = f"{self.dbdir}/ABA_syn.txt"
         syns = {}
         if os.path.exists(fname):
@@ -88,7 +88,7 @@ class BirdDB:
               syns[cn] = syn
         print(f'{len(syns)} Syns loaded')
         print(syns)
-        aba = ABAList()
+       
         abadict = {}
         for cl in self.classes:
           match = aba.match(cl.CleanName)
@@ -100,8 +100,7 @@ class BirdDB:
               print(f'no match for {cl.CleanName}')
         return abadict
     
-    def famClassDict(self):  # maps famname to index, also classid to fam index/id
-        dict = self.loadABAData()
+    def famClassDict(self,dict):  # maps famname to index, also classid to fam index/id
         fs = set()
         for cl in self.classes:
           if cl.ClassId in dict:
@@ -125,6 +124,15 @@ class BirdDB:
             fields = l.split(' ')
             bbdict[fields[0]] = (float(fields[1]),float(fields[2]),float(fields[3]),float(fields[4]))
         return bbdict
+    
+    def loadBBDataFromFile(self,bbf):
+        bbdict = {}
+        fname = f"{self.dbdir}/{bbf}.txt"
+        with open(fname,'r') as f:
+          for i,l in enumerate(f.readlines()):
+            fields = l.split(' ')
+            bbdict[fields[0]] = (float(fields[1]),float(fields[2]),float(fields[3]),float(fields[4]))
+        return bbdict
          
   
     # we write all yolo label files and use .txt file for train/val/test
@@ -138,22 +146,26 @@ class BirdDB:
           if id.ClassId not in cdict:
               continue
           cidx = cdict[id.ClassId]
+          imfile = f'{self.imdir}/{id.ImFile}'
+          im = Image.open(imfile)
+          iw = im.width
+          ih = im.height
           fname = f'{labdir}/{id.ImFile.replace('jpg','txt')}'
           if not os.path.isdir(os.path.dirname(fname)):
             os.mkdir(os.path.dirname(fname))
           
           bb = bbdict[id.Id]
           with open(fname,'w') as f:
-              f.write(f'{cidx} {bb[0]} {bb[1]} {bb[2]} {bb[3]}\n')
+              f.write(f'{cidx} {(bb[0]+(bb[2]/2))/iw} {(bb[1] + (bb[3]/2))/ih} {bb[2]/iw} {bb[3]/ih}\n')  ## yolo wants cx,cy,w,h, bb is cornet w,h -- normalized retarded again
 
-    def writeYoloImageFiles(self,cdict):
+    def writeYoloImageFiles(self,cdict,fdir):  # yolo filesin txt must be absolute paths????? retarded
         train = []
         val = []
         test = []
         for id in self.imdata:
           if id.ClassId not in cdict:
               continue
-          fname = f'{self.imdir}/{id.ImFile}'
+          fname = f'{fdir}/images/{id.ImFile}'
           if id.TrainTest == '1':
               train.append(fname)
           if id.TrainTest == '0':
@@ -359,97 +371,141 @@ class BirdDB:
         fig.suptitle(f'{self.classNameForClassId(cid)}')
         plt.show()
 
+    def showImageWithBox(self,imid,bbfile):
+        imfile = self.imageFileFromImid(imid)
+        fig, axes = plt.subplots(nrows=1, ncols=1,figsize=(6,6))
+        img = Image.open(imfile)
+        imdraw = ImageDraw.Draw(img)
+        
+        bbdict = self.loadBBDataFromFile(bbfile)
+        bbdata = bbdict[imid]
+        imdraw.rectangle([bbdata[0],bbdata[1],bbdata[0]+bbdata[2], bbdata[1]+bbdata[3]],outline=(200,0,0),width=2)
+
+        axes.imshow(img)
+        fig.suptitle(f'{imid}')
+        plt.show()
+
 RESNET_IMSIZE = 224
 
 '''
 PLaceholder for older stuff
 '''
-class MiscDB(Dataset):
+class ModifiedBirdDB(BirdDB):
     
-    if torchvision.__version__[0:4] == '0.15':
-        RESIZE_TRANS = transforms.Compose([
-            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
-            transforms.ConvertImageDtype(torch.float32),
-        ])
-    else:
-        RESIZE_TRANS = transforms.Compose([
-            transforms.Resize([RESNET_IMSIZE,RESNET_IMSIZE],antialias=True),
-            transforms.ToDtype(torch.float32,scale=True),
-          
-        ])
 
-    def __init__(self, db,  transform=None):
-        
-        self.transform = transform
-        self.db = db
+    def __init__(self, basedb,dbname,bbfile=None):
+    
+      self.basedb = basedb
+      self.dbname = dbname
+      # shallow copy to start
+      self.classes = basedb.classes
+      self.imdata = basedb.imdata
+      self.imdict = {}
+      for im in self.imdata:
+                self.imdict[im.Id] = im
+      self.dir = db.dir
+      self.dbdir = f"{self.dir}/{dbname}"
+      self.imdir = self.dbdir + '/images'
+      if self.dbname.endswith('_bby'):
+         bbfile = 'bounding_boxes_yolo11'
+      if self.dbname.endswith('_bb4'):
+         bbfile = 'bounding_boxes_yolo_e40'
+      if bbfile is not None:
+        self.bbdict = db.loadBBDataFromFile(bbfile)
+  
+    def writeDBfiles(self):
+      if not os.path.exists(self.dbdir):  # make possible subdirs
+            os.makedirs(self.dbdir)
+      self.writeClassLabs()
+      self.writeImageLabs()
+      self.writeTrainTest()
+      self.writeImageList()
+      if '_bb' in self.dbname:
+        self.writeBBImageFiles()
        
+
+    
+    def writeClassLabs(self):
+        with open(self.dbdir + '/classes.txt','w') as f:
+          for x in self.classes:
+              f.write(f'{x.ClassId} {x.ClassName}\n')
+
+
+    def writeImageLabs(self):
+        with open(self.dbdir + '/image_class_labels.txt','w') as f:
+          for x in self.imdata:
+            f.write(f'{x.Id} {x.ClassId}\n')
+
+    def writeTrainTest(self):
+        with open(self.dbdir + '/train_test_split.txt','w') as f:
+          for x in self.imdata:
+            f.write(f'{x.Id} {x.TrainTest}\n')
+
+    def writeImageList(self):
+        with open(self.dbdir + '/images.txt','w') as f:
+          for x in self.imdata:
+            f.write(f'{x.Id} {x.ImFile}\n')
+     
+    def copyImageFile(self,imfile):
         
-        self.imageDict = {}
-        self.labelDict = {}
+        fname = f'{self.imdir}/{imfile}'
+        sname = f'{self.basedb.imdir}/{imfile}'
+        fdir = os.path.dirname(fname)
+        if not os.path.exists(fdir):  # make possible subdirs
+            os.makedirs(fdir)
+        shutil.copy(sname, fname)
+
+
+    def copyImageFiles(self):
+        if not os.path.exists(self.imdir):
+            os.makedirs(self.imdir)
+        for x in self.imdata:
+           self.copyImageFile(x.ImFile)
+
+    def writeBBImageFiles(self):
+        if not os.path.exists(self.imdir):
+            os.makedirs(self.imdir)
+        for x in self.imdata:
+           self.writeBBFile(x.Id)
+
+    def writeBBFile(self,imid):
+      idata = self.imdict[imid]
+      imfile = idata.ImFile
+      fname = f'{self.imdir}/{imfile}'
+      sname = f'{self.basedb.imdir}/{imfile}'
+      im = Image.open(sname)
+      bb = self.bbdict[imid]
+      left = bb[0]
+      top = bb[1]
+      w = bb[2]
+      h = bb[3]
+      right = left + w
+      bottom = top + h
+      pad = int(max(w,h) * 1.05) # pad by 5%
+      pad = 0  # too much distortion?
+      if w > h: # try to adjust height to match width plut pad
+          diff = int((w-h)/2) # amount to pad each side
+          top = max(0,bb[1] - diff)
+          bottom = min(im.height,top + w)
+      else:
+          diff = int((h-w)/2)
+          left = max(0,bb[0]-diff)
+          right = min(im.width,left + h)
+      left = max(0,left-pad)
+      top = max(0,top-pad)
+      right = min(im.width,right+pad)
+      bottom = min(im.height,bottom+pad)
+      im = im.crop((left,top,right,bottom))
+      if im.mode != 'RGB':
+          im = im.convert('RGB')
+      
+      im = im.resize((RESNET_IMSIZE,RESNET_IMSIZE))
+      if not os.path.exists(os.path.dirname(fname)):
+            os.makedirs(os.path.dirname(fname))
+      print(f"writing {fname}")
+      im.save(fname)     
+
         
-        self.name = None
-
-    def numClasses(self):
-        return self.db.numClasses()
-
-    def __len__(self):
-        return self.db.numImages();
-
-    def __getitem__(self, idx):
-        if idx in self.imageDict:
-          image = self.imageDict[idx]
-          label = self.labelDict[idx]
-        else:
-          img_path, label = self.db.imageFileAndLabel(idx)
-          ## this reads into tensor
-          image = torchvision.io.decode_image(img_path,ImageReadMode.RGB) #some CBU in BW
-          image = ImageDataset.RESIZE_TRANS(image)  # resize and scale
-          image = image.to(Env.TheEnv.device)
-          self.imageDict[idx] = image
-          self.labelDict[idx] = label
-        # perhaps move to GPU here?
-        # print(f'ImageDict = {len(self.imageDict)}')
-       # image = ImageDataset.RESIZE_TRANS(image)  # resize and scale
-        
-        if False and self.transform:
-          image = self.transform(image)  # possible run transform pipeline here
-        if image.shape[0] < 3:
-            print(image.shape,img_path)
-        return image, label  # returns tensor and int
-
-    def getClassName(self,idx):
-        return self.db.className(idx)
-
-    def writeClassLabs(self,wdir):
-        f = open(wdir + '/classes.txt','w')
-        for i, x in enumerate(self.myClassLabs):
-            f.write(f'{x} {self.myClassNames[i]}\n')
-        f.close()
-
-    def writeImageLabs(self,wdir):
-        f = open(wdir + '/image_class_labels.txt','w')
-        for x in self.readImageFiles(self.dir): #[[id, file]]):
-            myid = x[0]
-            mylab = self.imageLabDict[myid]
-            if myid in self.myIDs and mylab in self.usedLabs:
-                f.write(f'{myid} {mylab}\n')
-        f.close()
-
-    def writeImageFiles(self,wdir):
-        idir = wdir + '/images'
-        if not os.path.exists(idir):
-            os.makedirs(idir)
-        f = open(wdir + '/images.txt','w')
-        for x in self.readImageFiles(self.dir): #[[id, file]]):
-            myid = x[0]
-            mylab = self.imageLabDict[myid]
-            if myid in self.myIDs and mylab in self.usedLabs:
-                f.write(f'{myid} {x[1]}\n')
-                iidir = idir + '/' + x[1].split('/')[0]
-                if not os.path.exists(iidir):
-                    os.makedirs(iidir)
-                shutil.copy(self.dir / 'images' / x[1], idir + '/' + x[1])
-        f.close()                
 
     def writeSmallImageFiles(self,wdir):
         f = open(wdir + '/images.txt','w')
@@ -481,78 +537,9 @@ class MiscDB(Dataset):
                 tu.write_jpeg(image,write_path,100)
         f.close()                
 
-    '''
-    Write images files cropping to bounding box (squared up where possible) then resized to 224,224 for ResNet.
-    Uses PIL methods rather than torchvision (as in above) for simplicity.
-    '''
-    def writeBBSImageFiles(self,wdir):
-        f = open(wdir + '/images.txt','w')
-        bbdict = self.readBBDict(self.dir)
-        for x in self.readImageFiles(self.dir): #[[id, file]]):
-            myid = x[0]
-            mylab = self.imageLabDict[myid]
-            if myid in self.myIDs and mylab in self.usedLabs:
-                f.write(f'{myid} {x[1]}\n')
-                img_path = str(self.dir / 'images' / x[1])
-                write_path = wdir + '/images/' + x[1]
-                iidir = wdir + '/images/' + x[1].split('/')[0]
-                if not os.path.exists(iidir):
-                    os.makedirs(iidir)
-                # read image shink and write
-                im = Image.open(img_path)
-                bb = bbdict[myid]
-                left = bb[0]
-                top = bb[1]
-                w = bb[2]
-                h = bb[3]
-                right = left + w
-                bottom = top + h
-                pad = int(max(w,h) * 1.05) # pad by 5%
-                pad = 0  # too much distortion?
-                if w > h: # try to adjust height to match width plut pad
-                    diff = int((w-h)/2) # amount to pad each side
-                    top = max(0,bb[1] - diff)
-                    bottom = min(im.height,top + w)
-                else:
-                    diff = int((h-w)/2)
-                    left = max(0,bb[0]-diff)
-                    right = min(im.width,left + h)
-                left = max(0,left-pad)
-                top = max(0,top-pad)
-                right = min(im.width,right+pad)
-                bottom = min(im.height,bottom+pad)
-                im = im.crop((left,top,right,bottom))
-                if im.mode != 'RGB':
-                    im = im.convert('RGB')
-                
-                im = im.resize((RESNET_IMSIZE,RESNET_IMSIZE))
-                im.save(write_path)                     
-        f.close()                
 
-
-    def writeTrainTest(self,wdir):
-        f = open(wdir + '/train_test_split.txt','w')
-        ttdict = {x[0]:x[1] for x in self.readTrainTest(self.dir)} #[[id, cat]]):
-        for x in self.readImageFiles(self.dir): #[[id, file]]):
-            myid = x[0]
-            mylab = self.imageLabDict[myid]
-            if myid in self.myIDs and mylab in self.usedLabs:
-                f.write(f'{myid} {ttdict[myid]}\n')
-        f.close()                
-
-    def writeDBfiles(self,wdir):
-        if not os.path.exists(wdir):
-            os.makedirs(wdir)
-        self.writeClassLabs(wdir)
-        self.writeImageLabs(wdir)
-        if wdir.endswith('_sm'):
-            self.writeSmallImageFiles(wdir)
-        elif wdir.endswith('_bbs'):
-            self.writeBBSImageFiles(wdir)
-        else:
-            self.writeImageFiles(wdir)
-        self.writeTrainTest(wdir)        
-
+    
+    
 
     def printStats(self):
         print(f'{len(self.myClassNames)} Classes')
@@ -647,18 +634,31 @@ class MiscDB(Dataset):
 if __name__ == "__main__":
     #__common_classes__()
     Env.setupEnv()
+    #db = BirdDB.DBFromName('cub_os')
+    #ndb = ModifiedBirdDB(db,'cub_bb4')
+    #ndb.writeDBfiles()
+    #exit()
+
+    db = BirdDB.DBFromName('cub_bb4')
+    #for l in db.imdata[0:10]:
+    db.showImages('166')
+    exit()
+    
     from abaList import ABAList
+    aba = ABAList()
+   
     db = BirdDB.DBFromName("cub_os")
-    cdict = db.famClassDict()[1]
-    db = BirdDB.DBFromName("cub_os")
+    adict = db.loadABAData(aba) 
+    fdict, cdict = db.famClassDict(adict)
+   # db = BirdDB.DBFromName("cub_os")
     print(cdict)
-    #db.writeYoloLabelFiles(cdict)
-    #db.writeYoloImageFiles(cdict)
-    cdict = db.famClassDict()[0]
-    db.writeYoloYamlFile(cdict)
+    db.writeYoloLabelFiles(cdict)
+    #db.writeYoloImageFiles(cdict,'/teamspace/studios/this_studio/birddb/data/CUB_200_2011')
+   
+    #db.writeYoloYamlFile(fdict)
     exit()
 
-    aba = db.loadABAData()
+    aba = db.loadABAData(aba)
     print(aba[db.classes[0].ClassId])
     print(db.famClassDict()[0])
     print(db.famClassDict()[1])
