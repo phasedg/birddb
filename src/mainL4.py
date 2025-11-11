@@ -24,7 +24,7 @@ if __name__ == "__main__":
     testdbsname = 'cub_bb4'
     
     ##driver = Driver(expbase,datadir,dbname,device)
-    modname = "RN50v2_u1_e20_b32_l05_L4"
+    modname = "RX50v2_u1_e10_b32_l05_L4"
     db = BirdDB.DBFromName(moddbsname)
     
     mod = BirdModel.modelFromName(modname,db)
