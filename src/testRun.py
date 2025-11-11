@@ -11,7 +11,7 @@ class TestRun:
     self.tstname = tstname
     self.moddb = moddb
     self.rundir = rundir
-    self.fname = f"{rundir}/{modname}/{tstname}-imscores.csv"
+    self.fname = f"{rundir}/{tstname}-imscores.csv"
     self.runScores = {}
    # print(self.fname)
     if os.path.exists(self.fname):
