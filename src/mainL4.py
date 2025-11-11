@@ -20,39 +20,32 @@ from testRun import TestRun
 if __name__ == "__main__":
     
     Env.setupEnv()
-    moddbsname = 'cub_sm'
-    testdbsname = 'cub_sm'
+    moddbsname = 'cub_bb4'
+    testdbsname = 'cub_bb4'
+    
     ##driver = Driver(expbase,datadir,dbname,device)
-    modname = "RX50v2_u1_e20_b32_l05_L4"
+    modname = "RN50v2_u1_e20_b32_l05_L4"
     db = BirdDB.DBFromName(moddbsname)
     
-   # mod = BirdModel.modelFromName(modname,db)
+    mod = BirdModel.modelFromName(modname,db)
     expt = Expt2.ExptFromName(modname,db)
 
     print(mod)
     if not mod.loaded and modname.endswith("L4"):
       expt.trainModel(mod)
       
-   #   exit()
+      exit()
 
-   # expt.model = mod
+    expt.model = mod
     
     rundb = BirdDB.DBFromName(testdbsname)
-    tdb = rundb.getTrainDB()
-    w,h,b = tdb.sizeStats()
-    print(w,h)
-    from matplotlib import pyplot as plt
-    x = [bb[0] for bb in b]
-    y = [bb[1] for bb in b]
-    a = [bb[0]/bb[1] for bb in b]
-    print(max(a))
-    fig,axes = plt.subplots(nrows=2,ncols=2)
-    axes[0,0].scatter(x,y)
-    axes[0,1].hist(x,bins=50)
-    axes[1,0].hist(y,bins=50)
-    axes[1,1].hist(a,bins=50)
-   
-    plt.show()
+    tdb = rundb.getTestDB()
+    tr = expt.runOnDB(tdb)
+    print(tr.top1Acc())
+    print(tr.topNAcc(2))
+    print(tr.topNAcc(5))
+    print(tr.top1Acc(0.9))
+    
     exit()
 
     tr = expt.runOnDB(rundb.getTestDB())
