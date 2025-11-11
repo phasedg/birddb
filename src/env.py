@@ -19,6 +19,11 @@ class Env:
       datadir = '/data1/datasets/birds'
       basedir = "/home/dg/proj/birddb"
       Env.initEnv(basedir,datadir,device)
+    if "proj/ccc" in wd:
+      datadir = '/data1/datasets/birds'
+      basedir = "/home/dg/proj/ccc"
+      Env.initEnv(basedir,datadir,device)
+    
     if "studio" in wd: # lightning.ai
       basedir = f"{wd}/birddb"
       datadir = f"{basedir}/data"
